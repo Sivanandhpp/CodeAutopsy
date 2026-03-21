@@ -6,6 +6,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/ui/Navbar';
 import LandingPage from './pages/LandingPage';
+import AnalysisPage from './pages/AnalysisPage';
 
 export default function App() {
   return (
@@ -14,8 +15,7 @@ export default function App() {
       <main className="page-content">
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          {/* Checkpoint 2: Analysis results page */}
-          {/* <Route path="/analysis/:id" element={<AnalysisPage />} /> */}
+          <Route path="/analysis/:id" element={<AnalysisPage />} />
           {/* Checkpoint 4: Editor page */}
           {/* <Route path="/editor/:id" element={<EditorPage />} /> */}
         </Routes>
