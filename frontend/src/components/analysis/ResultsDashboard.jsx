@@ -9,16 +9,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Shield, FileCode, Bug, AlertTriangle,
   ChevronRight, ChevronDown, Filter, Search, Clock,
-  Code2, GitBranch, Brain, Eye, Zap, 
+  Code2, GitBranch, Brain, Eye, Zap, Microscope,
   AlertCircle, Info, CheckCircle2
 } from 'lucide-react';
 import useAnalysisStore from '../../lib/analysisStore';
+import ArchaeologyPanel from '../archaeology/ArchaeologyPanel';
 
 export default function ResultsDashboard({ analysisId }) {
   const { analysisResult } = useAnalysisStore();
   const [severityFilter, setSeverityFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFiles, setExpandedFiles] = useState(new Set());
+  const [archaeologyTarget, setArchaeologyTarget] = useState(null);
   const navigate = useNavigate();
   
   if (!analysisResult) return null;
@@ -270,6 +272,19 @@ export default function ResultsDashboard({ analysisId }) {
                               {issue.code_snippet && (
                                 <pre className="issue-snippet"><code>{issue.code_snippet}</code></pre>
                               )}
+                              <div className="issue-actions">
+                                <button
+                                  className="trace-btn"
+                                  onClick={() => setArchaeologyTarget({
+                                    filePath: issue.file_path,
+                                    lineNumber: issue.line_number,
+                                    issueType: issue.issue_type,
+                                  })}
+                                >
+                                  <Microscope size={13} />
+                                  Trace Origin
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -289,6 +304,17 @@ export default function ResultsDashboard({ analysisId }) {
           </div>
         </motion.div>
       </div>
+
+      {/* Archaeology Panel Modal */}
+      {archaeologyTarget && (
+        <ArchaeologyPanel
+          analysisId={analysisId}
+          filePath={archaeologyTarget.filePath}
+          lineNumber={archaeologyTarget.lineNumber}
+          issueType={archaeologyTarget.issueType}
+          onClose={() => setArchaeologyTarget(null)}
+        />
+      )}
       
       <style>{dashboardStyles}</style>
     </div>
@@ -303,7 +329,7 @@ const cardVariants = {
 const dashboardStyles = `
   .results-page {
     min-height: 100vh;
-    padding-top: 80px;
+    padding-top: 20px;
     padding-bottom: 48px;
   }
   
@@ -640,6 +666,33 @@ const dashboardStyles = `
     line-height: 1.6;
     color: var(--ca-text);
     border: 1px solid var(--ca-border);
+  }
+  
+  .issue-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  
+  .trace-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    color: var(--ca-primary-light);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--ca-font-sans);
+    transition: all 0.15s;
+  }
+  
+  .trace-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: var(--ca-primary);
   }
   
   .no-issues {

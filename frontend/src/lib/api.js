@@ -80,10 +80,8 @@ export function subscribeToProgress(analysisId, onMessage, onError) {
  * Trace bug origin for a specific line
  */
 export async function traceBugOrigin(analysisId, filePath, lineNumber) {
-  const response = await api.post('/api/archaeology/trace', {
-    analysis_id: analysisId,
-    file_path: filePath,
-    line_number: lineNumber,
+  const response = await api.get(`/api/archaeology/trace/${analysisId}`, {
+    params: { file_path: filePath, line: lineNumber },
   });
   return response.data;
 }
@@ -92,10 +90,8 @@ export async function traceBugOrigin(analysisId, filePath, lineNumber) {
  * Get commit timeline for a file
  */
 export async function getFileTimeline(analysisId, filePath, maxCommits = 50) {
-  const response = await api.post('/api/archaeology/timeline', {
-    analysis_id: analysisId,
-    file_path: filePath,
-    max_commits: maxCommits,
+  const response = await api.get(`/api/archaeology/timeline/${analysisId}`, {
+    params: { file_path: filePath, max_commits: maxCommits },
   });
   return response.data;
 }
@@ -104,9 +100,18 @@ export async function getFileTimeline(analysisId, filePath, maxCommits = 50) {
  * Get blame data for a file
  */
 export async function getFileBlame(analysisId, filePath) {
-  const response = await api.post('/api/archaeology/blame', {
-    analysis_id: analysisId,
-    file_path: filePath,
+  const response = await api.get(`/api/archaeology/blame/${analysisId}`, {
+    params: { file_path: filePath },
+  });
+  return response.data;
+}
+
+/**
+ * Get blame heatmap data for a file
+ */
+export async function getBlameHeatmap(analysisId, filePath) {
+  const response = await api.get(`/api/archaeology/heatmap/${analysisId}`, {
+    params: { file_path: filePath },
   });
   return response.data;
 }
