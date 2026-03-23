@@ -227,7 +227,7 @@ async def export_json(analysis_id: str, db: Session = Depends(get_db)):
     return Response(
         content=json.dumps(export_data, indent=2),
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="codeautopsy_report_{analysis_id[:8]}.json"'}
+        headers={"Content-Disposition": f'attachment; filename="codeautopsy_report_{analysis_id[:8]}.json"'}  # type: ignore
     )
 
 
@@ -397,7 +397,7 @@ async def export_pdf(analysis_id: str, db: Session = Depends(get_db)):
             parts = file_name.replace('\\', '/').split('/')
             file_display = '/'.join(parts[-2:]) if len(parts) > 1 else file_name
             if len(file_display) > 32:
-                file_display = '…' + file_display[-30:]
+                file_display = '…' + file_display[-30:]  # type: ignore
 
             sev = issue.get('severity', 'info')
             issue_type = issue.get('issue_type', 'unknown')
@@ -469,7 +469,7 @@ async def export_pdf(analysis_id: str, db: Session = Depends(get_db)):
     elems.append(Spacer(1, 8))
     elems.append(Paragraph(
         f"This report was generated automatically by CodeAutopsy AI. "
-        f"Repository: <b>{repo_name}</b>  •  Analysis ID: {analysis_id[:8]}",
+        f"Repository: <b>{repo_name}</b>  •  Analysis ID: {analysis_id[:8]}",  # type: ignore
         S['caption']
     ))
 
