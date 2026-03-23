@@ -9,8 +9,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Shield, FileCode, Bug, AlertTriangle,
   ChevronRight, ChevronDown, Filter, Search, Clock,
-  Code2, GitBranch, Brain, Eye, Zap, Microscope,
-  AlertCircle, Info, CheckCircle2
+  Code2, GitBranch, Brain, Eye, Zap, Microscope, ExternalLink,
+  AlertCircle, Info, CheckCircle2, Loader2
 } from 'lucide-react';
 import useAnalysisStore from '../../lib/analysisStore';
 import ArchaeologyPanel from '../archaeology/ArchaeologyPanel';
@@ -21,11 +21,19 @@ export default function ResultsDashboard({ analysisId }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFiles, setExpandedFiles] = useState(new Set());
   const [archaeologyTarget, setArchaeologyTarget] = useState(null);
+  const [editorLoading, setEditorLoading] = useState(false);
   const navigate = useNavigate();
   
   if (!analysisResult) return null;
   
   const { health_score, total_issues, file_count, total_lines, languages, issues, file_tree, repo_name, repo_url } = analysisResult;
+
+  const handleOpenEditor = async () => {
+    setEditorLoading(true);
+    // Small delay to show loading state before navigation
+    await new Promise(r => setTimeout(r, 300));
+    navigate(`/editor/${analysisId}`);
+  };
   
   // Filter issues
   const filteredIssues = useMemo(() => {
@@ -104,19 +112,33 @@ export default function ResultsDashboard({ analysisId }) {
   return (
     <div className="results-page">
       <div className="container">
-        {/* Header */}
+        {/* Header — stacked vertically */}
         <div className="results-header">
           <Link to="/" className="back-link">
-            <ArrowLeft size={18} />
+            <ArrowLeft size={16} />
             <span>New Analysis</span>
           </Link>
-          
-          <div className="repo-info">
-            <h1 className="repo-name">{repo_name || 'Repository'}</h1>
-            <a href={repo_url} target="_blank" rel="noopener noreferrer" className="repo-url">
-              {repo_url}
-            </a>
-          </div>
+          <h1 className="repo-name">{repo_name || 'Repository'}</h1>
+          <a href={repo_url} target="_blank" rel="noopener noreferrer" className="repo-url">
+            {repo_url}
+          </a>
+          <button 
+            className="open-editor-btn"
+            onClick={handleOpenEditor}
+            disabled={editorLoading}
+          >
+            {editorLoading ? (
+              <>
+                <Loader2 size={14} className="editor-btn-spin" />
+                Loading Editor...
+              </>
+            ) : (
+              <>
+                <Code2 size={14} />
+                Open in Editor
+              </>
+            )}
+          </button>
         </div>
         
         {/* Stats Cards */}
@@ -335,6 +357,41 @@ const dashboardStyles = `
   
   .results-header {
     margin-bottom: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .open-editor-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    background: var(--ca-primary);
+    color: white;
+    border: none;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: var(--ca-font-sans);
+    transition: all 0.15s;
+    margin-top: 12px;
+  }
+  .open-editor-btn:hover:not(:disabled) {
+    background: var(--ca-primary-light);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+  }
+  .open-editor-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+  }
+  .editor-btn-spin {
+    animation: editor-spin 1s linear infinite;
+  }
+  @keyframes editor-spin {
+    to { transform: rotate(360deg); }
   }
   
   .back-link {
@@ -344,7 +401,6 @@ const dashboardStyles = `
     color: var(--ca-text-secondary);
     text-decoration: none;
     font-size: 0.9rem;
-    margin-bottom: 16px;
     transition: color 0.2s;
   }
   

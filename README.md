@@ -1,6 +1,3 @@
-<p align="center">
-  <img src="docs/banner.png" alt="CodeAutopsy Banner" width="100%"/>
-</p>
 
 <h1 align="center">CodeAutopsy</h1>
 <p align="center">

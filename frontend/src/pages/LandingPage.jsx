@@ -1,18 +1,16 @@
 /**
- * Landing Page
- * Hero section with GitHub URL input form and feature highlights.
+ * Landing Page — Custom design with DotGrid, LiquidBlobs, and GlassInput
+ * Preserves all analyze functionality from the original.
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  Search, GitBranch, Shield, Brain, 
-  ChevronRight, Zap, Clock, Code2,
-  ArrowRight, Sparkles, Activity, Eye
-} from 'lucide-react';
 import { analyzeRepository } from '../lib/api';
 import useAnalysisStore from '../lib/analysisStore';
+
+import DotGrid from '../components/landing/DotGrid';
+import LiquidBlobs from '../components/landing/LiquidBlobs';
 
 export default function LandingPage() {
   const [repoUrl, setRepoUrl] = useState('');
@@ -20,21 +18,24 @@ export default function LandingPage() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { setAnalysisId, setAnalysisStatus } = useAnalysisStore();
-  
+
   const handleAnalyze = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setError('');
-    
+
+    const url = repoUrl.trim();
+    if (!url) return;
+
     // Validate GitHub URL
     const urlPattern = /^https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
-    if (!urlPattern.test(repoUrl.trim().replace(/\.git$/, ''))) {
+    if (!urlPattern.test(url.replace(/\.git$/, ''))) {
       setError('Please enter a valid GitHub URL (e.g., https://github.com/owner/repo)');
       return;
     }
-    
+
     setLoading(true);
     try {
-      const data = await analyzeRepository(repoUrl.trim());
+      const data = await analyzeRepository(url);
       setAnalysisId(data.analysis_id);
       setAnalysisStatus('analyzing');
       navigate(`/analysis/${data.analysis_id}`);
@@ -44,557 +45,388 @@ export default function LandingPage() {
       setLoading(false);
     }
   };
-  
+
+  const handlePaste = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setRepoUrl(text);
+        setError('');
+      }
+    } catch {
+      // Clipboard permission denied — ignore silently
+    }
+  }, []);
+
+  const handleTryJuiceShop = useCallback(() => {
+    setRepoUrl('https://github.com/juice-shop/juice-shop');
+    setError('');
+  }, []);
+
   return (
-    <div className="landing-page">
-      {/* Hero Section */}
-      <section className="hero">
-        {/* Animated background elements */}
-        <div className="hero-bg-effects">
-          <div className="hero-orb hero-orb-1" />
-          <div className="hero-orb hero-orb-2" />
-          <div className="hero-orb hero-orb-3" />
-          <div className="hero-grid" />
-        </div>
-        
-        <div className="container hero-content">
-          <motion.div
-            className="hero-badge"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-          >
-            <Sparkles size={14} />
-            <span>AI-Powered Code Archaeology</span>
-          </motion.div>
-          
+    <div className="lp-container">
+      <DotGrid />
+      <LiquidBlobs />
+
+      <div className="lp-layout">
+        {/* Header */}
+        <header className="lp-header">
+          <div className="lp-logo">
+            <span className="lp-logo-text">CodeAutopsy</span>
+            <span className="lp-badge">BETA</span>
+          </div>
+          <button className="lp-login-btn">Login</button>
+        </header>
+
+        {/* Main Hero */}
+        <main className="lp-main">
           <motion.h1
-            className="hero-title"
-            initial={{ opacity: 0, y: 20 }}
+            className="lp-hero-text"
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
+            transition={{ duration: 0.7, delay: 0.15 }}
           >
-            A Time Machine for{' '}
-            <span className="gradient-text">Debugging</span>
+            A Time Machine <br />
+            for Debugging
           </motion.h1>
-          
+
           <motion.p
-            className="hero-subtitle"
+            className="lp-sub-hero"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
+            transition={{ duration: 0.6, delay: 0.35 }}
           >
-            Don't just find bugs — discover <strong>when</strong> they were introduced, 
-            <strong> who</strong> wrote them, and <strong>how</strong> they evolved. 
-            CodeAutopsy combines security scanning with Git forensics and AI insights.
+            Don't just find bugs — discover when they were introduced,
+            who wrote them, and how they evolved.
           </motion.p>
-          
-          {/* Analysis Form */}
+
+          {/* Glass Input */}
           <motion.form
-            className="hero-form"
+            className="lp-glass-container"
             onSubmit={handleAnalyze}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
+            transition={{ duration: 0.6, delay: 0.55 }}
           >
-            <div className="hero-input-wrapper">
-              <Search size={20} className="hero-input-icon" />
+            <div className="lp-glass-wrapper">
               <input
                 type="text"
-                className="hero-input"
+                className="lp-glass-field"
                 placeholder="Paste a GitHub repository URL..."
                 value={repoUrl}
                 onChange={(e) => { setRepoUrl(e.target.value); setError(''); }}
                 disabled={loading}
               />
+
+              {/* Paste button */}
+              <button
+                type="button"
+                className="lp-btn-ghost"
+                onClick={handlePaste}
+                title="Paste from clipboard"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
+
+              {/* Analyze button */}
               <button
                 type="submit"
-                className="hero-submit-btn"
+                className="lp-btn-primary"
                 disabled={loading || !repoUrl.trim()}
               >
                 {loading ? (
-                  <div className="spinner" />
+                  <div className="lp-spinner" />
                 ) : (
-                  <>
-                    <span>Analyze</span>
-                    <ArrowRight size={18} />
-                  </>
+                  'Analyse'
                 )}
               </button>
             </div>
-            
+
+            {/* Error message */}
             {error && (
               <motion.p
-                className="hero-error"
+                className="lp-error"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
               >
                 {error}
               </motion.p>
             )}
-            
-            <p className="hero-hint">
-              Try: <button type="button" className="hero-hint-link" onClick={() => setRepoUrl('https://github.com/juice-shop/juice-shop')}>
+
+            {/* Try hint */}
+            <div className="lp-glass-hint">
+              Try:{' '}
+              <button
+                type="button"
+                className="lp-hint-link"
+                onClick={handleTryJuiceShop}
+              >
                 juice-shop/juice-shop
               </button>
-            </p>
+            </div>
           </motion.form>
-        </div>
-      </section>
-      
-      {/* Features Section */}
-      <section className="features">
-        <div className="container">
-          <motion.div
-            className="features-grid"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={{
-              hidden: {},
-              visible: { transition: { staggerChildren: 0.1 } }
-            }}
-          >
-            {features.map((feature, index) => (
-              <motion.div
-                key={index}
-                className="feature-card card"
-                variants={{
-                  hidden: { opacity: 0, y: 20 },
-                  visible: { opacity: 1, y: 0 }
-                }}
-              >
-                <div className="feature-icon" style={{ background: feature.color }}>
-                  {feature.icon}
-                </div>
-                <h3 className="feature-title">{feature.title}</h3>
-                <p className="feature-desc">{feature.description}</p>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-      
-      {/* How It Works Section */}
-      <section className="how-it-works">
-        <div className="container">
-          <h2 className="section-title">
-            How It <span className="gradient-text">Works</span>
-          </h2>
-          <div className="steps-grid">
-            {steps.map((step, index) => (
-              <motion.div
-                key={index}
-                className="step-card glass-card"
-                initial={{ opacity: 0, x: index % 2 === 0 ? -20 : 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <div className="step-number">{String(index + 1).padStart(2, '0')}</div>
-                <div className="step-content">
-                  <h4>{step.title}</h4>
-                  <p>{step.description}</p>
-                </div>
-                {index < steps.length - 1 && <ChevronRight className="step-arrow" size={20} />}
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-      
-      <style>{`
-        .landing-page {
-          min-height: 100vh;
-        }
-        
-        /* ─── Hero ─────────────────────────────── */
-        
-        .hero {
-          position: relative;
-          min-height: 85vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          padding-top: 80px;
-        }
-        
-        .hero-bg-effects {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-        }
-        
-        .hero-orb {
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(80px);
-          opacity: 0.3;
-        }
-        
-        .hero-orb-1 {
-          width: 400px;
-          height: 400px;
-          background: var(--ca-primary);
-          top: 10%;
-          left: 15%;
-          animation: float 8s ease-in-out infinite;
-        }
-        
-        .hero-orb-2 {
-          width: 300px;
-          height: 300px;
-          background: var(--ca-accent);
-          bottom: 20%;
-          right: 15%;
-          animation: float 6s ease-in-out infinite reverse;
-        }
-        
-        .hero-orb-3 {
-          width: 200px;
-          height: 200px;
-          background: #8b5cf6;
-          top: 40%;
-          right: 30%;
-          animation: float 10s ease-in-out infinite;
-        }
-        
-        .hero-grid {
-          position: absolute;
-          inset: 0;
-          background-image: 
-            linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-          background-size: 60px 60px;
-        }
-        
-        .hero-content {
-          position: relative;
-          text-align: center;
-          max-width: 800px;
-          margin: 0 auto;
-        }
-        
-        .hero-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 6px 16px;
-          border-radius: 9999px;
-          background: rgba(99, 102, 241, 0.1);
-          border: 1px solid rgba(99, 102, 241, 0.2);
-          color: var(--ca-primary-light);
-          font-size: 0.85rem;
-          font-weight: 500;
-          margin-bottom: 24px;
-        }
-        
-        .hero-title {
-          font-size: clamp(2.5rem, 6vw, 4.2rem);
-          font-weight: 900;
-          line-height: 1.1;
-          margin-bottom: 20px;
-          letter-spacing: -0.03em;
-        }
-        
-        .hero-subtitle {
-          font-size: 1.15rem;
-          color: var(--ca-text-secondary);
-          line-height: 1.7;
-          margin-bottom: 40px;
-          max-width: 640px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-        
-        .hero-subtitle strong {
-          color: var(--ca-text);
-        }
-        
-        .hero-form {
-          max-width: 600px;
-          margin: 0 auto;
-        }
-        
-        .hero-input-wrapper {
-          display: flex;
-          align-items: center;
-          background: var(--ca-bg-card);
-          border: 1px solid var(--ca-border);
-          border-radius: 14px;
-          padding: 6px;
-          transition: all 0.3s;
-          box-shadow: var(--ca-shadow-lg);
-        }
-        
-        .hero-input-wrapper:focus-within {
-          border-color: var(--ca-primary);
-          box-shadow: var(--ca-shadow-glow);
-        }
-        
-        .hero-input-icon {
-          color: var(--ca-text-muted);
-          margin: 0 12px;
-          flex-shrink: 0;
-        }
-        
-        .hero-input {
-          flex: 1;
-          background: transparent;
-          border: none;
-          outline: none;
-          font-size: 0.95rem;
-          color: var(--ca-text);
-          font-family: var(--ca-font-sans);
-          min-width: 0;
-        }
-        
-        .hero-input::placeholder {
-          color: var(--ca-text-muted);
-        }
-        
-        .hero-submit-btn {
-          flex-shrink: 0;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: var(--ca-gradient-primary);
-          color: white;
-          border: none;
-          border-radius: 10px;
-          padding: 12px 24px;
-          font-weight: 600;
-          font-size: 0.95rem;
-          cursor: pointer;
-          transition: all 0.2s;
-          font-family: var(--ca-font-sans);
-        }
-        
-        .hero-submit-btn:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
-        }
-        
-        .hero-submit-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-        
-        .spinner {
-          width: 20px;
-          height: 20px;
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          border-top-color: white;
-          border-radius: 50%;
-          animation: spin 0.6s linear infinite;
-        }
-        
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        
-        .hero-error {
-          color: var(--ca-critical);
-          font-size: 0.85rem;
-          margin-top: 12px;
-          text-align: left;
-          padding: 0 8px;
-        }
-        
-        .hero-hint {
-          color: var(--ca-text-muted);
-          font-size: 0.85rem;
-          margin-top: 16px;
-        }
-        
-        .hero-hint-link {
-          background: none;
-          border: none;
-          color: var(--ca-primary-light);
-          cursor: pointer;
-          font-size: inherit;
-          font-family: var(--ca-font-mono);
-          text-decoration: underline;
-          text-underline-offset: 3px;
-        }
-        
-        .hero-hint-link:hover {
-          color: var(--ca-primary);
-        }
-        
-        /* ─── Features ─────────────────────────── */
-        
-        .features {
-          padding: 80px 0;
-        }
-        
-        .features-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-          gap: 24px;
-        }
-        
-        .feature-card {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          padding: 28px;
-        }
-        
-        .feature-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-        }
-        
-        .feature-title {
-          font-size: 1.1rem;
-          font-weight: 700;
-        }
-        
-        .feature-desc {
-          color: var(--ca-text-secondary);
-          font-size: 0.9rem;
-          line-height: 1.6;
-        }
-        
-        /* ─── How It Works ─────────────────────── */
-        
-        .how-it-works {
-          padding: 80px 0;
-        }
-        
-        .section-title {
-          text-align: center;
-          font-size: 2.2rem;
-          font-weight: 800;
-          letter-spacing: -0.02em;
-          margin-bottom: 48px;
-        }
-        
-        .steps-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 20px;
-        }
-        
-        .step-card {
-          display: flex;
-          align-items: flex-start;
-          gap: 16px;
-          padding: 24px;
-          position: relative;
-        }
-        
-        .step-number {
-          font-size: 2rem;
-          font-weight: 900;
-          background: var(--ca-gradient-primary);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          line-height: 1;
-          flex-shrink: 0;
-        }
-        
-        .step-content h4 {
-          font-size: 1rem;
-          font-weight: 700;
-          margin-bottom: 4px;
-        }
-        
-        .step-content p {
-          font-size: 0.85rem;
-          color: var(--ca-text-secondary);
-          line-height: 1.5;
-        }
-        
-        .step-arrow {
-          position: absolute;
-          right: -12px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--ca-text-muted);
-          display: none;
-        }
-        
-        @media (min-width: 768px) {
-          .step-arrow { display: block; }
-        }
-        
-        @media (max-width: 640px) {
-          .hero-submit-btn span { display: none; }
-          .hero-submit-btn { padding: 12px 16px; }
-        }
-      `}</style>
+        </main>
+      </div>
+
+      <style>{landingStyles}</style>
     </div>
   );
 }
 
-// Feature cards data
-const features = [
-  {
-    icon: <Shield size={24} />,
-    title: 'Multi-Layer Bug Detection',
-    description: 'Semgrep security scanning finds SQL injection, XSS, and weak crypto across Python, JavaScript, Java, and TypeScript.',
-    color: 'linear-gradient(135deg, #ef4444, #f97316)',
-  },
-  {
-    icon: <Clock size={24} />,
-    title: 'Code Archaeology Timeline',
-    description: 'Click any bug to see the exact commit that introduced it, with an interactive D3.js timeline showing its evolution.',
-    color: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-  },
-  {
-    icon: <Brain size={24} />,
-    title: 'AI-Powered Fix Suggestions',
-    description: 'Groq AI explains root causes, generates code patches with confidence scoring, and provides step-by-step fix strategies.',
-    color: 'linear-gradient(135deg, #06b6d4, #10b981)',
-  },
-  {
-    icon: <Code2 size={24} />,
-    title: 'In-Browser IDE',
-    description: 'Monaco Editor with squiggly underlines, hover tooltips, and a VS Code-style problems panel for seamless debugging.',
-    color: 'linear-gradient(135deg, #8b5cf6, #ec4899)',
-  },
-  {
-    icon: <Eye size={24} />,
-    title: 'Blame Heatmap',
-    description: 'Visualize author contributions with color-coded ownership. See who touched buggy code and when.',
-    color: 'linear-gradient(135deg, #f97316, #eab308)',
-  },
-  {
-    icon: <Activity size={24} />,
-    title: 'Health Score & Metrics',
-    description: '0-100 health grade with severity distribution charts, before/after comparisons, and dependency graphs.',
-    color: 'linear-gradient(135deg, #10b981, #06b6d4)',
-  },
-];
+const landingStyles = `
+  .lp-container {
+    width: 100vw;
+    min-height: 100vh;
+    position: relative;
+    overflow: hidden;
+    background-color: #000;
+  }
 
-// How it works steps
-const steps = [
-  {
-    title: 'Paste GitHub URL',
-    description: 'Enter any public repository URL to start the analysis.',
-  },
-  {
-    title: 'Automated Scanning',
-    description: 'Semgrep + custom analyzers scan for security vulnerabilities.',
-  },
-  {
-    title: 'View Results',
-    description: 'Interactive dashboard with health score and issue details.',
-  },
-  {
-    title: 'Explore Archaeology',
-    description: 'Timeline shows when bugs were born and how they evolved.',
-  },
-  {
-    title: 'AI Explains & Fixes',
-    description: 'Get root cause analysis and code patches with confidence scores.',
-  },
-];
+  .lp-layout {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    width: 100%;
+  }
+
+  /* ─── Header ─────────────────────── */
+  .lp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 3rem;
+  }
+
+  .lp-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .lp-logo-text {
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: white;
+    letter-spacing: -0.5px;
+  }
+
+  .lp-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.8);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .lp-login-btn {
+    background-color: white;
+    color: black;
+    border: none;
+    padding: 0.4rem 1.2rem;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+
+  .lp-login-btn:hover {
+    background-color: #eee;
+    transform: scale(1.05);
+  }
+
+  /* ─── Main ───────────────────────── */
+  .lp-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    margin-top: 5vh;
+  }
+
+  .lp-hero-text {
+    font-size: clamp(3rem, 7vw, 6rem);
+    font-weight: 500;
+    line-height: 1.1;
+    color: white;
+    margin-bottom: 2rem;
+    letter-spacing: -2px;
+    text-shadow: 0 0 40px rgba(255, 255, 255, 0.3);
+  }
+
+  .lp-sub-hero {
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 6rem;
+    max-width: 600px;
+  }
+
+  /* ─── Glass Input ────────────────── */
+  .lp-glass-container {
+    position: relative;
+    z-index: 10;
+    margin-top: auto;
+    margin-bottom: 80px;
+    align-self: center;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 700px;
+  }
+
+  .lp-glass-wrapper {
+    padding: 0.6rem 0.6rem 0.6rem 1.75rem;
+    border-radius: 20px;
+    background-color: rgba(30, 33, 48, 0.5);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    width: 100%;
+    transition: border-color 0.2s;
+  }
+
+  .lp-glass-wrapper:focus-within {
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+
+  .lp-glass-field {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: white;
+    flex: 1;
+    font-size: 1.15rem;
+    font-family: inherit;
+    margin-left: 0;
+    caret-color: #f9d857;
+  }
+
+  .lp-glass-field::placeholder {
+    color: #a0a0ab;
+    font-weight: 400;
+    letter-spacing: -0.2px;
+  }
+
+  .lp-glass-field:disabled {
+    opacity: 0.5;
+  }
+
+  .lp-btn-ghost {
+    background: transparent;
+    border: none;
+    color: #a0a0ab;
+    font-size: 0.95rem;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0.5rem 0.8rem;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .lp-btn-ghost:hover {
+    color: white;
+  }
+
+  .lp-btn-primary {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 0.65rem 1.2rem;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    font-family: inherit;
+    cursor: pointer;
+    margin-left: 0.5rem;
+    transition: background-color 0.2s ease;
+  }
+
+  .lp-btn-primary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .lp-btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .lp-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: lp-spin 0.6s linear infinite;
+  }
+
+  @keyframes lp-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .lp-error {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.85rem;
+    align-self: center;
+    margin-top: 0.3rem;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  .lp-glass-hint {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.9rem;
+    align-self: center;
+    margin-top: 0.1rem;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    position: relative;
+    z-index: 20;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  .lp-hint-link {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    font-size: inherit;
+    font-family: var(--ca-font-mono, monospace);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    font-weight: 500;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    transition: color 0.2s;
+  }
+
+  .lp-hint-link:hover {
+    color: #a78bfa;
+  }
+
+  /* ─── Responsive ─────────────────── */
+  @media (max-width: 640px) {
+    .lp-header { padding: 1rem 1.5rem; }
+    .lp-main { padding: 1rem; }
+    .lp-glass-container { max-width: 95%; }
+    .lp-hero-text { letter-spacing: -1px; }
+    .lp-sub-hero { margin-bottom: 3rem; font-size: 1rem; }
+  }
+`;

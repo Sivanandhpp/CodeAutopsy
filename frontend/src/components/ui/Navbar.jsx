@@ -1,46 +1,30 @@
 /**
- * Navbar Component
- * Top navigation bar with branding, theme toggle, and navigation links.
+ * Navbar — Simple scrollable navbar matching landing page style
+ * Left: CodeAutopsy + BETA badge
+ * Right: Theme toggle + Login button
  */
 
-import { Link, useLocation } from 'react-router-dom';
-import { Sun, Moon, Github, Microscope } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useThemeStore from '../../lib/themeStore';
 
 export default function Navbar() {
   const { theme, toggleTheme } = useThemeStore();
-  const location = useLocation();
-  
-  const isActive = (path) => location.pathname === path;
-  
+
   return (
-    <nav className="navbar">
-      <div className="container navbar-inner">
+    <nav className="ca-nav">
+      <div className="ca-nav-inner">
         {/* Logo */}
-        <Link to="/" className="navbar-brand">
-          <div className="navbar-logo-icon">
-            <Microscope size={22} />
-          </div>
-          <span className="navbar-logo-text">
-            Code<span className="gradient-text">Autopsy</span>
-          </span>
+        <Link to="/" className="ca-nav-brand">
+          <span className="ca-nav-logo">CodeAutopsy</span>
+          <span className="ca-nav-badge">BETA</span>
         </Link>
-        
-        {/* Navigation Links */}
-        <div className="navbar-links">
-          <Link 
-            to="/" 
-            className={`navbar-link ${isActive('/') ? 'active' : ''}`}
-          >
-            Home
-          </Link>
-        </div>
-        
-        {/* Actions */}
-        <div className="navbar-actions">
+
+        {/* Right Actions */}
+        <div className="ca-nav-actions">
           <motion.button
-            className="theme-toggle"
+            className="ca-nav-theme"
             onClick={toggleTheme}
             whileTap={{ scale: 0.9 }}
             whileHover={{ scale: 1.1 }}
@@ -49,126 +33,91 @@ export default function Navbar() {
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={theme}
-                initial={{ y: -20, opacity: 0 }}
+                initial={{ y: -14, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 20, opacity: 0 }}
+                exit={{ y: 14, opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </motion.div>
             </AnimatePresence>
           </motion.button>
-          
-          <a
-            href="https://github.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-secondary"
-            style={{ padding: '8px 14px', fontSize: '0.85rem' }}
-          >
-            <Github size={16} />
-            <span className="hide-mobile">GitHub</span>
-          </a>
+
+          <button className="ca-nav-login">Login</button>
         </div>
       </div>
-      
+
       <style>{`
-        .navbar {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          z-index: 100;
-          background: var(--ca-glass-bg);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          border-bottom: 1px solid var(--ca-glass-border);
+        .ca-nav {
+          position: relative;
+          z-index: 50;
+          border-bottom: 1px solid var(--ca-border);
+          background: var(--ca-bg);
         }
-        
-        .navbar-inner {
+        .ca-nav-inner {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          height: 64px;
-          gap: 24px;
+          max-width: 1280px;
+          margin: 0 auto;
+          padding: 1rem 2rem;
         }
-        
-        .navbar-brand {
+        .ca-nav-brand {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          text-decoration: none;
+          color: var(--ca-text);
+        }
+        .ca-nav-logo {
+          font-size: 1.15rem;
+          font-weight: 600;
+          letter-spacing: -0.5px;
+        }
+        .ca-nav-badge {
+          font-size: 0.65rem;
+          padding: 0.1rem 0.45rem;
+          border-radius: 10px;
+          border: 1px solid var(--ca-border);
+          color: var(--ca-text-muted);
+          font-weight: 500;
+          letter-spacing: 0.5px;
+        }
+        .ca-nav-actions {
           display: flex;
           align-items: center;
           gap: 10px;
-          text-decoration: none;
-          color: var(--ca-text);
-          font-weight: 700;
-          font-size: 1.2rem;
         }
-        
-        .navbar-logo-icon {
+        .ca-nav-theme {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 36px;
-          height: 36px;
-          border-radius: 10px;
-          background: var(--ca-gradient-primary);
-          color: white;
-        }
-        
-        .navbar-logo-text {
-          font-size: 1.2rem;
-          font-weight: 800;
-          letter-spacing: -0.02em;
-        }
-        
-        .navbar-links {
-          display: flex;
-          gap: 8px;
-        }
-        
-        .navbar-link {
-          text-decoration: none;
-          color: var(--ca-text-secondary);
-          font-weight: 500;
-          font-size: 0.9rem;
-          padding: 6px 14px;
+          width: 32px;
+          height: 32px;
           border-radius: 8px;
-          transition: all 0.2s;
-        }
-        
-        .navbar-link:hover,
-        .navbar-link.active {
-          color: var(--ca-text);
-          background: rgba(99, 102, 241, 0.1);
-        }
-        
-        .navbar-actions {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        
-        .theme-toggle {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border-radius: 10px;
           border: 1px solid var(--ca-border);
-          background: var(--ca-bg-elevated);
+          background: var(--ca-bg-secondary);
           color: var(--ca-text);
           cursor: pointer;
-          transition: all 0.2s;
+          transition: border-color 0.2s;
         }
-        
-        .theme-toggle:hover {
+        .ca-nav-theme:hover {
           border-color: var(--ca-primary);
-          background: rgba(99, 102, 241, 0.1);
         }
-        
-        @media (max-width: 640px) {
-          .hide-mobile { display: none; }
-          .navbar-links { display: none; }
+        .ca-nav-login {
+          background: var(--ca-text);
+          color: var(--ca-bg);
+          border: none;
+          padding: 0.35rem 1rem;
+          border-radius: 18px;
+          font-weight: 500;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: opacity 0.2s;
+          font-family: inherit;
+        }
+        .ca-nav-login:hover {
+          opacity: 0.85;
         }
       `}</style>
     </nav>
