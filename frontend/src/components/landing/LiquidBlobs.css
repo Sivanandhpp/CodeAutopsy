@@ -1,0 +1,116 @@
+
+.nebula-container {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: transparent;
+  isolation: isolate;
+  /* Smooth fade out from bottom (solid) up to middle (transparent) */
+  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.9) 30%, transparent 75%);
+  mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.9) 30%, transparent 75%);
+}
+
+.blob-layer {
+  position: absolute;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Extremely soft, blurred gradients to create the continuous ribbon/aura */
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(140px); /* Massive blur to remove all edges */
+  opacity: 0.85;
+  will-change: transform;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+/* Left bright Cyan/Turquoise sweeping up */
+.blob-cyan {
+  background: #00f0ff;
+  width: 70vw;
+  height: 60vh;
+  bottom: -15vh;
+  left: -15vw;
+  animation: float-cyan 22s infinite alternate ease-in-out;
+  mix-blend-mode: screen;
+}
+
+/* Right bright Blue/Violet sweeping up */
+.blob-blue {
+  background: #4d00ff;
+  width: 70vw;
+  height: 60vh;
+  bottom: -15vh;
+  right: -15vw;
+  animation: float-blue 25s infinite alternate ease-in-out;
+  mix-blend-mode: screen;
+}
+
+/* Soft Magenta/Pink blend in the middle right to create the purple transition */
+.blob-magenta {
+  background: #ff00c8;
+  width: 80vw;
+  height: 50vh;
+  bottom: -25vh;
+  left: 10vw;
+  animation: float-magenta 28s infinite alternate ease-in-out;
+  mix-blend-mode: screen;
+  opacity: 0.6;
+}
+
+/* Deep continuous Violet/Blue base across the bottom */
+.blob-purple {
+  background: #0a00b6; 
+  width: 140vw;
+  height: 60vh;
+  bottom: -35vh;
+  left: -20vw;
+  animation: float-purple 30s infinite alternate ease-in-out;
+}
+
+/* Remove sharp elements */
+.void, .sharp-shape {
+  display: none !important;
+}
+
+/* Subtle organic grain overlay for premium feel */
+.nebula-dust {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* Flowing, ribbon-like continuous motion */
+@keyframes float-cyan {
+  0% { transform: translateY(0) translateX(0) scale(1) rotate(15deg); }
+  50% { transform: translateY(-5vh) translateX(5vw) scale(1.1) rotate(20deg); }
+  100% { transform: translateY(5vh) translateX(-5vw) scale(0.95) rotate(10deg); }
+}
+
+@keyframes float-blue {
+  0% { transform: translateY(0) translateX(0) scale(1) rotate(-15deg); }
+  50% { transform: translateY(-8vh) translateX(-5vw) scale(1.15) rotate(-20deg); }
+  100% { transform: translateY(5vh) translateX(5vw) scale(0.9) rotate(-10deg); }
+}
+
+@keyframes float-magenta {
+  0% { transform: translateY(0) translateX(0) scale(1); }
+  50% { transform: translateY(8vh) translateX(-10vw) scale(1.2); }
+  100% { transform: translateY(-5vh) translateX(10vw) scale(0.85); }
+}
+
+@keyframes float-purple {
+  0% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(5vh) scale(1.05); }
+  100% { transform: translateY(-5vh) scale(0.95); }
+}

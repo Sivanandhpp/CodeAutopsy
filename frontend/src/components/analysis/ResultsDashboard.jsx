@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Shield, FileCode, Bug, AlertTriangle,
   ChevronRight, ChevronDown, Filter, Search, Clock,
-  Code2, GitBranch, Brain, Eye, Zap, Microscope,
+  Code2, GitBranch, Brain, Eye, Zap, Microscope, ExternalLink,
   AlertCircle, Info, CheckCircle2
 } from 'lucide-react';
 import useAnalysisStore from '../../lib/analysisStore';
@@ -117,6 +117,14 @@ export default function ResultsDashboard({ analysisId }) {
               {repo_url}
             </a>
           </div>
+          
+          <button 
+            className="open-editor-btn"
+            onClick={() => navigate(`/editor/${analysisId}`)}
+          >
+            <Code2 size={16} />
+            Open in Editor
+          </button>
         </div>
         
         {/* Stats Cards */}
@@ -335,6 +343,32 @@ const dashboardStyles = `
   
   .results-header {
     margin-bottom: 32px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .repo-info { flex: 1; }
+  .open-editor-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    background: var(--ca-primary);
+    color: white;
+    border: none;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: var(--ca-font-sans);
+    transition: all 0.15s;
+    margin-top: 20px;
+  }
+  .open-editor-btn:hover {
+    background: var(--ca-primary-light);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99,102,241,0.3);
   }
   
   .back-link {
