@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import useAnalysisStore from '../../lib/analysisStore';
 import ArchaeologyPanel from '../archaeology/ArchaeologyPanel';
+import AIPanel from './AIPanel';
 
 export default function ResultsDashboard({ analysisId }) {
   const { analysisResult } = useAnalysisStore();
@@ -21,6 +22,7 @@ export default function ResultsDashboard({ analysisId }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFiles, setExpandedFiles] = useState(new Set());
   const [archaeologyTarget, setArchaeologyTarget] = useState(null);
+  const [aiTarget, setAiTarget] = useState(null);
   const [editorLoading, setEditorLoading] = useState(false);
   const navigate = useNavigate();
   
@@ -306,6 +308,13 @@ export default function ResultsDashboard({ analysisId }) {
                                   <Microscope size={13} />
                                   Trace Origin
                                 </button>
+                                <button
+                                  className="ai-fix-btn"
+                                  onClick={() => setAiTarget(issue)}
+                                >
+                                  <Brain size={13} />
+                                  AI Fix
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -335,6 +344,14 @@ export default function ResultsDashboard({ analysisId }) {
           lineNumber={archaeologyTarget.lineNumber}
           issueType={archaeologyTarget.issueType}
           onClose={() => setArchaeologyTarget(null)}
+        />
+      )}
+
+      {/* AI Analysis Panel */}
+      {aiTarget && (
+        <AIPanel
+          issue={aiTarget}
+          onClose={() => setAiTarget(null)}
         />
       )}
       
@@ -749,6 +766,27 @@ const dashboardStyles = `
   .trace-btn:hover {
     background: rgba(99, 102, 241, 0.15);
     border-color: var(--ca-primary);
+  }
+  
+  .ai-fix-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    background: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    color: #a78bfa;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--ca-font-sans);
+    transition: all 0.15s;
+  }
+  
+  .ai-fix-btn:hover {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: #8b5cf6;
   }
   
   .no-issues {
