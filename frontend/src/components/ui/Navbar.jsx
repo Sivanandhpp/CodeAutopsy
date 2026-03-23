@@ -94,7 +94,7 @@ export default function Navbar() {
           justify-content: center;
           width: 32px;
           height: 32px;
-          border-radius: 8px;
+          border-radius: 18px;
           border: 1px solid var(--ca-border);
           background: var(--ca-bg-secondary);
           color: var(--ca-text);

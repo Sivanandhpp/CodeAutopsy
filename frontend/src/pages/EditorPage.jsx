@@ -339,7 +339,7 @@ const editorPageStyles = `
     justify-content: center;
     width: 28px;
     height: 28px;
-    border-radius: 6px;
+    border-radius: 14px;
     border: 1px solid var(--ca-border);
     background: var(--ca-bg-secondary);
     color: var(--ca-text);
