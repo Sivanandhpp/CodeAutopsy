@@ -1,20 +1,24 @@
 /**
- * Editor Page — Split-pane layout with file browser, Monaco editor, and problems panel
+ * Editor Page — Full-viewport layout with merged single toolbar.
+ * No global navbar; editor has its own integrated bar.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Loader2, AlertTriangle, Microscope } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Loader2, AlertTriangle, ArrowLeft, Sun, Moon } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import FileBrowser from '../components/editor/FileBrowser';
 import CodeEditor from '../components/editor/CodeEditor';
 import ProblemsPanel from '../components/editor/ProblemsPanel';
 import ArchaeologyPanel from '../components/archaeology/ArchaeologyPanel';
 import { getAnalysisResults, getFileContent } from '../lib/api';
+import useThemeStore from '../lib/themeStore';
 
 export default function EditorPage() {
   const { id: analysisId } = useParams();
+  const navigate = useNavigate();
+  const { theme, toggleTheme } = useThemeStore();
 
   // Analysis data
   const [analysis, setAnalysis] = useState(null);
@@ -27,15 +31,11 @@ export default function EditorPage() {
   const [fileLanguage, setFileLanguage] = useState('plaintext');
   const [fileLoading, setFileLoading] = useState(false);
 
+
   // Archaeology
   const [archaeologyTarget, setArchaeologyTarget] = useState(null);
 
-  // Editor ref for jumping
-  const editorRef = useRef(null);
-
-  // Detect dark mode
-  const isDark = typeof document !== 'undefined' &&
-    document.documentElement.getAttribute('data-theme') !== 'light';
+  const isDark = theme === 'dark';
 
   // Fetch analysis on mount
   useEffect(() => {
@@ -84,10 +84,8 @@ export default function EditorPage() {
 
   // Jump to line handler
   const handleJumpToLine = useCallback((lineNumber) => {
-    // Use Monaco's revealLineInCenter via the editor reference
     const editorEl = document.querySelector('.ce-wrap .monaco-editor');
     if (editorEl) {
-      // Access the editor through Monaco's internal ref
       const editor = editorEl.__monacoEditor;
       if (editor) {
         editor.revealLineInCenter(lineNumber);
@@ -96,7 +94,6 @@ export default function EditorPage() {
         return;
       }
     }
-    // Fallback — scroll to approximate position
     const wrapper = document.querySelector('.ce-wrap');
     if (wrapper) {
       const lineHeight = 18;
@@ -134,65 +131,93 @@ export default function EditorPage() {
 
   return (
     <div className="ep-layout">
-      {/* File Browser Sidebar */}
-      <div className="ep-sidebar">
-        <FileBrowser
-          fileTree={analysis?.file_tree || []}
-          issues={analysis?.issues || []}
-          selectedFile={selectedFile}
-          onSelectFile={(path) => loadFile(path)}
-        />
+      {/* ── Single Merged Toolbar ───────────── */}
+      <div className="ep-bar">
+        {/* Left section: Logo + back + breadcrumb */}
+        <div className="ep-bar-left">
+          <Link to="/" className="ep-bar-logo">CodeAutopsy</Link>
+          <span className="ep-bar-sep">|</span>
+          <button className="ep-bar-back" onClick={() => navigate(`/analysis/${analysisId}`)}>
+            <ArrowLeft size={13} />
+            Dashboard
+          </button>
+          {selectedFile && (
+            <>
+              <span className="ep-bar-sep">›</span>
+              <span className="ep-bar-repo">{analysis?.repo_name}</span>
+              <span className="ep-bar-sep">/</span>
+              <span className="ep-bar-file">{selectedFile}</span>
+              {currentFileIssues.length > 0 && (
+                <span className="ep-bar-issues">{currentFileIssues.length}</span>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Right: Theme + Login */}
+        <div className="ep-bar-right">
+          <motion.button
+            className="ep-bar-theme"
+            onClick={toggleTheme}
+            whileTap={{ scale: 0.9 }}
+            title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={theme}
+                initial={{ y: -12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 12, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {isDark ? <Sun size={14} /> : <Moon size={14} />}
+              </motion.div>
+            </AnimatePresence>
+          </motion.button>
+          <button className="ep-bar-login">Login</button>
+        </div>
       </div>
 
-      {/* Main Editor Area */}
-      <div className="ep-main">
-        {/* Top bar */}
-        <div className="ep-topbar">
-          <Link to={`/analysis/${analysisId}`} className="ep-back">
-            <ArrowLeft size={15} />
-            Dashboard
-          </Link>
-          {selectedFile && (
-            <div className="ep-breadcrumb">
-              <span className="ep-repo">{analysis?.repo_name || 'repo'}</span>
-              <span className="ep-sep">/</span>
-              <span className="ep-filepath">{selectedFile}</span>
-              {currentFileIssues.length > 0 && (
-                <span className="ep-file-issues">{currentFileIssues.length} issues</span>
-              )}
-            </div>
-          )}
+      {/* ── Body ─────────────────────────────── */}
+      <div className="ep-body">
+        <div className="ep-sidebar">
+          <FileBrowser
+            fileTree={analysis?.file_tree || []}
+            issues={analysis?.issues || []}
+            selectedFile={selectedFile}
+            onSelectFile={(path) => loadFile(path)}
+          />
         </div>
 
-        {/* Editor */}
-        <div className="ep-editor-area">
-          {fileLoading ? (
-            <div className="ep-file-loading">
-              <Loader2 size={24} className="ep-spin" />
-              <span>Loading file...</span>
-            </div>
-          ) : selectedFile ? (
-            <CodeEditor
-              code={fileCode}
-              language={fileLanguage}
-              issues={currentFileIssues}
-              onLineClick={handleJumpToLine}
-              isDark={isDark}
-            />
-          ) : (
-            <div className="ep-no-file">
-              <p>Select a file from the explorer to view it</p>
-            </div>
-          )}
-        </div>
+        <div className="ep-main">
+          <div className="ep-editor-area">
+            {fileLoading ? (
+              <div className="ep-file-loading">
+                <Loader2 size={24} className="ep-spin" />
+                <span>Loading file...</span>
+              </div>
+            ) : selectedFile ? (
+              <CodeEditor
+                code={fileCode}
+                language={fileLanguage}
+                issues={currentFileIssues}
+                onLineClick={handleJumpToLine}
+                isDark={isDark}
+              />
+            ) : (
+              <div className="ep-no-file">
+                <p>Select a file from the explorer to view it</p>
+              </div>
+            )}
+          </div>
 
-        {/* Problems Panel */}
-        <ProblemsPanel
-          issues={analysis?.issues || []}
-          filePath={selectedFile || ''}
-          onJumpToLine={handleJumpToLine}
-          onTraceOrigin={handleTraceOrigin}
-        />
+          <ProblemsPanel
+            issues={analysis?.issues || []}
+            filePath={selectedFile || ''}
+            onJumpToLine={handleJumpToLine}
+            onTraceOrigin={handleTraceOrigin}
+          />
+        </div>
       </div>
 
       {/* Archaeology Panel Modal */}
@@ -214,70 +239,136 @@ export default function EditorPage() {
 const editorPageStyles = `
   .ep-layout {
     display: flex;
+    flex-direction: column;
     height: 100vh;
     overflow: hidden;
     background: var(--ca-bg);
   }
-  .ep-sidebar {
-    width: 260px;
-    min-width: 200px;
-    flex-shrink: 0;
-    height: 100%;
+
+  /* ─── Merged Toolbar ─────────────────── */
+  .ep-bar {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    height: 44px;
+    min-height: 44px;
+    border-bottom: 1px solid var(--ca-border);
+    background: var(--ca-bg);
+    gap: 12px;
+  }
+  .ep-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
+  }
+  .ep-bar-logo {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--ca-text);
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .ep-bar-sep {
+    color: var(--ca-text-muted);
+    opacity: 0.4;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+  .ep-bar-back {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--ca-text-muted);
+    background: none;
+    border: none;
+    font-size: 0.78rem;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 4px;
+    transition: all 0.15s;
+    font-family: var(--ca-font-sans);
+    flex-shrink: 0;
+  }
+  .ep-bar-back:hover { color: var(--ca-text); background: var(--ca-bg-secondary); }
+  .ep-bar-repo { color: var(--ca-text-secondary); font-weight: 600; font-size: 0.78rem; flex-shrink: 0; }
+  .ep-bar-file {
+    color: var(--ca-text);
+    font-family: var(--ca-font-mono);
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ep-bar-issues {
+    background: rgba(239,68,68,0.15);
+    color: var(--ca-critical);
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 0px 5px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+
+  /* Right: theme + login */
+  .ep-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .ep-bar-theme {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--ca-border);
+    background: var(--ca-bg-secondary);
+    color: var(--ca-text);
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .ep-bar-theme:hover { border-color: var(--ca-primary); }
+  .ep-bar-login {
+    background: var(--ca-text);
+    color: var(--ca-bg);
+    border: none;
+    padding: 0.25rem 0.7rem;
+    border-radius: 14px;
+    font-weight: 500;
+    font-size: 0.75rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+  .ep-bar-login:hover { opacity: 0.85; }
+
+  /* ─── Body ───────────────────────────── */
+  .ep-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .ep-sidebar {
+    width: 240px;
+    min-width: 180px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--ca-border);
+    overflow-y: auto;
+    background: var(--ca-bg);
   }
   .ep-main {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    height: 100%;
-  }
-  .ep-topbar {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--ca-border);
-    background: var(--ca-bg-card);
-    height: 40px;
-    flex-shrink: 0;
-  }
-  .ep-back {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--ca-text-muted);
-    font-size: 0.8rem;
-    text-decoration: none;
-    transition: color 0.15s;
-    flex-shrink: 0;
-  }
-  .ep-back:hover { color: var(--ca-primary-light); }
-  .ep-breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.82rem;
-    min-width: 0;
-    overflow: hidden;
-  }
-  .ep-repo { color: var(--ca-text-muted); font-weight: 600; flex-shrink: 0; }
-  .ep-sep { color: var(--ca-text-muted); opacity: 0.4; }
-  .ep-filepath {
-    color: var(--ca-text);
-    font-family: var(--ca-font-mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .ep-file-issues {
-    background: rgba(239,68,68,0.1);
-    color: var(--ca-critical);
-    font-size: 0.68rem;
-    font-weight: 600;
-    padding: 1px 8px;
-    border-radius: 4px;
-    flex-shrink: 0;
+    min-height: 0;
   }
   .ep-editor-area {
     flex: 1;
@@ -309,10 +400,16 @@ const editorPageStyles = `
     font-weight: 600;
   }
   .ep-spin {
-    animation: editor-spin 1s linear infinite;
+    animation: ep-spin-anim 1s linear infinite;
     color: var(--ca-primary-light);
   }
-  @keyframes editor-spin {
+  @keyframes ep-spin-anim {
     to { transform: rotate(360deg); }
+  }
+
+  @media (max-width: 768px) {
+    .ep-sidebar { width: 180px; }
+    .ep-bar-search { width: 160px; }
+    .ep-bar-repo, .ep-bar-file { display: none; }
   }
 `;

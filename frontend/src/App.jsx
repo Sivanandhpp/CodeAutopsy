@@ -12,11 +12,13 @@ import EditorPage from './pages/EditorPage';
 function AppLayout() {
   const location = useLocation();
   const isLanding = location.pathname === '/';
+  const isEditor = location.pathname.startsWith('/editor');
+  const hideNavbar = isLanding || isEditor;
 
   return (
     <>
-      {!isLanding && <Navbar />}
-      <main className={isLanding ? '' : 'page-content'}>
+      {!hideNavbar && <Navbar />}
+      <main className={hideNavbar ? '' : 'page-content'}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/analysis/:id" element={<AnalysisPage />} />

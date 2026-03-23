@@ -22,29 +22,29 @@
   --ca-muted: #94a3b8;
   
   /* Dark theme (default) */
-  --ca-bg: #0a0a1a;
-  --ca-bg-secondary: #111128;
-  --ca-bg-card: #16163a;
-  --ca-bg-elevated: #1e1e4a;
-  --ca-border: #2a2a5a;
+  --ca-bg: #0a0a0a;
+  --ca-bg-secondary: #111111;
+  --ca-bg-card: #161616;
+  --ca-bg-elevated: #1c1c1c;
+  --ca-border: #2a2a2a;
   --ca-text: #e2e8f0;
   --ca-text-secondary: #94a3b8;
   --ca-text-muted: #64748b;
   
   /* Glassmorphism */
-  --ca-glass-bg: rgba(22, 22, 58, 0.7);
-  --ca-glass-border: rgba(99, 102, 241, 0.15);
+  --ca-glass-bg: rgba(22, 22, 22, 0.7);
+  --ca-glass-border: rgba(255, 255, 255, 0.08);
   
   /* Gradients */
   --ca-gradient-primary: linear-gradient(135deg, #6366f1, #06b6d4);
-  --ca-gradient-dark: linear-gradient(180deg, #0a0a1a 0%, #111128 100%);
-  --ca-gradient-card: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(6, 182, 212, 0.05));
+  --ca-gradient-dark: linear-gradient(180deg, #0a0a0a 0%, #111111 100%);
+  --ca-gradient-card: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
   
   /* Shadows */
   --ca-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --ca-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   --ca-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --ca-shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
+  --ca-shadow-glow: 0 0 20px rgba(99, 102, 241, 0.2);
   
   /* Typography */
   --ca-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
@@ -382,7 +382,6 @@ body {
 }
 
 .page-content {
-  padding-top: 80px;
   min-height: 100vh;
 }
 

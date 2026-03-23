@@ -13,7 +13,7 @@ export default function FileBrowser({
   fileTree = [], 
   issues = [],
   selectedFile, 
-  onSelectFile 
+  onSelectFile
 }) {
   const [expandedDirs, setExpandedDirs] = useState(new Set());
   const [search, setSearch] = useState('');
@@ -159,7 +159,7 @@ export default function FileBrowser({
         <span className="fb-count">{fileTree.length} files</span>
       </div>
       <div className="fb-search">
-        <Search size={14} />
+        <Search size={13} />
         <input
           type="text"
           placeholder="Find file..."
@@ -179,8 +179,7 @@ export default function FileBrowser({
           height: 100%;
           display: flex;
           flex-direction: column;
-          background: var(--ca-bg-card);
-          border-right: 1px solid var(--ca-border);
+          background: var(--ca-bg);
         }
         .fb-header {
           display: flex;
@@ -205,7 +204,7 @@ export default function FileBrowser({
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 6px 10px;
+          padding: 5px 10px;
           margin: 6px 8px;
           background: var(--ca-bg-secondary);
           border: 1px solid var(--ca-border);
@@ -217,10 +216,11 @@ export default function FileBrowser({
           border: none;
           outline: none;
           color: var(--ca-text);
-          font-size: 0.8rem;
+          font-size: 0.78rem;
           width: 100%;
           font-family: var(--ca-font-sans);
         }
+        .fb-search input::placeholder { color: var(--ca-text-muted); }
         .fb-tree {
           flex: 1;
           overflow-y: auto;
