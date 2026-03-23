@@ -14,15 +14,17 @@ import ProblemsPanel from '../components/editor/ProblemsPanel';
 import ArchaeologyPanel from '../components/archaeology/ArchaeologyPanel';
 import { getAnalysisResults, getFileContent } from '../lib/api';
 import useThemeStore from '../lib/themeStore';
+import useAnalysisStore from '../lib/analysisStore';
 
 export default function EditorPage() {
   const { id: analysisId } = useParams();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useThemeStore();
+  const { analysisResult } = useAnalysisStore();
 
   // Analysis data
-  const [analysis, setAnalysis] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [analysis, setAnalysis] = useState(analysisResult || null);
+  const [loading, setLoading] = useState(!analysisResult);
   const [error, setError] = useState(null);
 
   // Editor state
@@ -37,10 +39,20 @@ export default function EditorPage() {
 
   const isDark = theme === 'dark';
 
-  // Fetch analysis on mount
+  // Fetch analysis on mount if not in store
   useEffect(() => {
-    fetchAnalysis();
-  }, [analysisId]);
+    if (!analysisResult) {
+      fetchAnalysis();
+    } else {
+      // Auto-select first file with issues if using cached data
+      const fileWithIssues = (analysisResult.file_tree || []).find(f => {
+        return (analysisResult.issues || []).some(i => i.file_path === f.path);
+      });
+      if (fileWithIssues && !selectedFile) {
+        loadFile(fileWithIssues.path, analysisResult);
+      }
+    }
+  }, [analysisId, analysisResult]);
 
   async function fetchAnalysis() {
     try {

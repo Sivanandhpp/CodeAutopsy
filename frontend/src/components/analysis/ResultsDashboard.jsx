@@ -3,7 +3,7 @@
  * Displays analysis results: health score, issues list, file tree, and severity breakdown.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -16,9 +16,14 @@ import useAnalysisStore from '../../lib/analysisStore';
 import { downloadReport } from '../../lib/api';
 import ArchaeologyPanel from '../archaeology/ArchaeologyPanel';
 import AIPanel from './AIPanel';
+import Navbar from '../ui/Navbar';
 
 export default function ResultsDashboard({ analysisId }) {
   const { analysisResult } = useAnalysisStore();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
   const [severityFilter, setSeverityFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFiles, setExpandedFiles] = useState(new Set());
@@ -128,8 +133,10 @@ export default function ResultsDashboard({ analysisId }) {
   };
   
   return (
-    <div className="results-page">
-      <div className="container">
+    <>
+      <Navbar />
+      <div className="results-page">
+        <div className="container">
         {/* Header — flex layout for repo info on left and actions on right */}
         <div className="results-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: '20px' }}>
           <div className="header-info">
@@ -423,6 +430,7 @@ export default function ResultsDashboard({ analysisId }) {
       
       <style>{dashboardStyles}</style>
     </div>
+    </>
   );
 }
 
