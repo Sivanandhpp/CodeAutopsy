@@ -139,6 +139,40 @@ export async function getFileContent(analysisId, filePath) {
 }
 
 /**
+ * Download a report (json or pdf)
+ */
+export async function downloadReport(analysisId, format = 'json') {
+  const url = `${API_BASE_URL}/api/report/${analysisId}/${format}`;
+  
+  // Use fetch to handle Blob download properly
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download report: ${response.statusText}`);
+  }
+  
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  
+  // Extract filename from headers if possible, otherwise use fallback
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let filename = `codeautopsy_report_${analysisId.substring(0, 8)}.${format}`;
+  if (contentDisposition && contentDisposition.includes('filename=')) {
+    const match = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (match && match[1]) {
+      filename = match[1];
+    }
+  }
+  
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
+/**
  * Check API health
  */
 export async function checkHealth() {

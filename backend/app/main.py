@@ -14,6 +14,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.analysis import router as analysis_router
 from app.api.routes.archaeology import router as archaeology_router
 from app.api.routes.ai import router as ai_router
+from app.api.routes.report import router as report_router
 
 
 @asynccontextmanager
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(analysis_router, tags=["Analysis"])
     app.include_router(archaeology_router, tags=["Archaeology"])
     app.include_router(ai_router, tags=["AI"])
+    app.include_router(report_router, tags=["Report"])
     
     return app
 

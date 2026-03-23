@@ -202,6 +202,10 @@ CodeAutopsy/
 | `GET` | `/api/results/{id}` | Get analysis results |
 | `GET` | `/api/analyze/stream/{id}` | SSE stream of progress updates |
 | `GET` | `/api/files/{id}?path=...` | Read file from analyzed repo |
+| `GET` | `/api/archaeology/trace/{id}` | Trace a bug's origin in git |
+| `POST` | `/api/ai/analyze` | Get AI-powered explanation and code fix |
+| `GET` | `/api/report/{id}/json` | Export results as raw JSON |
+| `GET` | `/api/report/{id}/pdf` | Export results as styled PDF report |
 
 ---
 
@@ -220,7 +224,7 @@ CodeAutopsy/
 
 ## Optional: Enhanced Analysis with Semgrep
 
-The built-in regex scanner covers 16 common security patterns. For deeper analysis with 1000+ rules:
+The built-in regex scanner covers 50+ common security patterns across 14 languages. For deeper analysis with 1000+ rules:
 
 ```bash
 pip install semgrep
@@ -234,10 +238,10 @@ CodeAutopsy automatically detects and uses Semgrep when available, falling back 
 
 - [x] **Checkpoint 1** — Project foundation, landing page, dark/light theme
 - [x] **Checkpoint 2** — GitHub integration, static analysis, results dashboard
-- [ ] **Checkpoint 3** — Code Archaeology Engine (git blame, timeline visualization)
-- [ ] **Checkpoint 4** — In-browser code editor with Monaco
-- [ ] **Checkpoint 5** — AI-powered insights with Groq (fix suggestions, confidence scoring)
-- [ ] **Checkpoint 6** — Polish, export reports, deployment
+- [x] **Checkpoint 3** — Code Archaeology Engine (git blame, timeline visualization)
+- [x] **Checkpoint 4** — In-browser code editor with Monaco
+- [x] **Checkpoint 5** — AI-powered insights with Groq (fix suggestions, confidence scoring)
+- [x] **Checkpoint 6** — Polish, export reports, static analyzer expansion
 
 ---
 
