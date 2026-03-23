@@ -5,19 +5,59 @@
 import { useRef, useEffect, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 
-// Map our language names to Monaco language IDs
+// Map our language names (from languages.py) to Monaco language IDs
+// Monaco supports ~70 languages natively. For unsupported ones, we map
+// to the closest available highlighter (e.g. 'crystal' → 'ruby').
 const MONACO_LANG_MAP = {
+  // ── Core languages ─────────────────────────────────────────
   'python': 'python', 'javascript': 'javascript', 'typescript': 'typescript',
   'java': 'java', 'c': 'c', 'c++': 'cpp', 'c#': 'csharp', 'go': 'go',
   'rust': 'rust', 'ruby': 'ruby', 'php': 'php', 'swift': 'swift',
   'kotlin': 'kotlin', 'scala': 'scala', 'dart': 'dart', 'lua': 'lua',
   'perl': 'perl', 'r': 'r', 'shell': 'shell', 'powershell': 'powershell',
+  // ── Web & markup ───────────────────────────────────────────
   'html': 'html', 'css': 'css', 'scss': 'scss', 'less': 'less',
   'json': 'json', 'yaml': 'yaml', 'xml': 'xml', 'markdown': 'markdown',
   'sql': 'sql', 'graphql': 'graphql', 'dockerfile': 'dockerfile',
-  'hcl': 'hcl', 'clojure': 'clojure', 'elixir': 'elixir',
-  'erlang': 'erlang', 'haskell': 'haskell', 'objective-c': 'objective-c',
+  'svg': 'xml', 'toml': 'ini',
+  // ── Systems & low-level ────────────────────────────────────
+  'assembly': 'mips', 'cuda': 'cpp', 'objective-c': 'objective-c',
+  'objective-c++': 'objective-c', 'fortran': 'fortran',
+  // ── JVM & .NET ─────────────────────────────────────────────
+  'groovy': 'java', 'clojure': 'clojure', 'haskell': 'haskell',
+  'erlang': 'erlang', 'elixir': 'elixir', 'f#': 'fsharp',
+  'visual basic': 'vb', 'apex': 'apex',
+  // ── Scripting & dynamic ────────────────────────────────────
+  'coffeescript': 'coffeescript', 'livescript': 'javascript',
+  'crystal': 'ruby', 'nim': 'python', 'julia': 'julia',
+  // ── Config & data ──────────────────────────────────────────
+  'ini': 'ini', 'hcl': 'hcl', 'jsonld': 'json', 'json5': 'json',
+  'csv': 'plaintext', 'protocol buffers': 'protobuf',
+  // ── Template & web frameworks ──────────────────────────────
+  'handlebars': 'handlebars', 'twig': 'twig', 'jade': 'pug',
+  'haml': 'haml', 'slim': 'ruby', 'liquid': 'liquid',
+  'html+django': 'html', 'html+erb': 'html', 'html+php': 'php',
+  'html+eex': 'html', 'rhtml': 'html',
+  // ── Database ───────────────────────────────────────────────
+  'plsql': 'sql', 'sqlpl': 'sql',
+  // ── Shader & GPU ───────────────────────────────────────────
+  'glsl': 'c', 'hlsl': 'cpp', 'metal': 'cpp', 'opencl': 'c',
+  // ── DevOps & infrastructure ────────────────────────────────
+  'batchfile': 'bat', 'tcl': 'tcl',
+  'nginx': 'plaintext', 'apacheconf': 'plaintext',
+  // ── Functional ─────────────────────────────────────────────
+  'ocaml': 'plaintext', 'scheme': 'scheme', 'racket': 'scheme',
+  'common lisp': 'plaintext', 'emacs lisp': 'plaintext',
+  'standard ml': 'plaintext', 'purescript': 'typescript',
+  // ── Misc ───────────────────────────────────────────────────
+  'tex': 'latex', 'restructuredtext': 'restructuredtext',
+  'pascal': 'pascal', 'ada': 'ada', 'cobol': 'cobol',
+  'prolog': 'prolog', 'solidity': 'sol', 'arduino': 'cpp',
+  'processing': 'java', 'cython': 'python', 'sass': 'scss',
+  'stylus': 'css', 'diff': 'diff',
+  'plaintext': 'plaintext', 'text': 'plaintext',
 };
+
 
 export default function CodeEditor({ 
   code = '', 

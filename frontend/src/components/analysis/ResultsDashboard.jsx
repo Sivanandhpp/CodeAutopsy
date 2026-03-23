@@ -3,25 +3,35 @@
  * Displays analysis results: health score, issues list, file tree, and severity breakdown.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Shield, FileCode, Bug, AlertTriangle,
   ChevronRight, ChevronDown, Filter, Search, Clock,
   Code2, GitBranch, Brain, Eye, Zap, Microscope, ExternalLink,
-  AlertCircle, Info, CheckCircle2, Loader2
+  AlertCircle, Info, CheckCircle2, Loader2, Download
 } from 'lucide-react';
 import useAnalysisStore from '../../lib/analysisStore';
+import { downloadReport } from '../../lib/api';
 import ArchaeologyPanel from '../archaeology/ArchaeologyPanel';
+import AIPanel from './AIPanel';
+import Navbar from '../ui/Navbar';
 
 export default function ResultsDashboard({ analysisId }) {
   const { analysisResult } = useAnalysisStore();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
   const [severityFilter, setSeverityFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFiles, setExpandedFiles] = useState(new Set());
   const [archaeologyTarget, setArchaeologyTarget] = useState(null);
+  const [aiTarget, setAiTarget] = useState(null);
   const [editorLoading, setEditorLoading] = useState(false);
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState(null);
   const navigate = useNavigate();
   
   if (!analysisResult) return null;
@@ -33,6 +43,19 @@ export default function ResultsDashboard({ analysisId }) {
     // Small delay to show loading state before navigation
     await new Promise(r => setTimeout(r, 300));
     navigate(`/editor/${analysisId}`);
+  };
+
+  const handleExport = async (format) => {
+    setExportingFormat(format);
+    setExportDropdownOpen(false);
+    try {
+      await downloadReport(analysisId, format);
+    } catch (error) {
+      console.error('Failed to export report:', error);
+      // Optional: Add toast notification here
+    } finally {
+      setExportingFormat(null);
+    }
   };
   
   // Filter issues
@@ -110,18 +133,69 @@ export default function ResultsDashboard({ analysisId }) {
   };
   
   return (
-    <div className="results-page">
-      <div className="container">
-        {/* Header — stacked vertically */}
-        <div className="results-header">
-          <Link to="/" className="back-link">
-            <ArrowLeft size={16} />
-            <span>New Analysis</span>
-          </Link>
-          <h1 className="repo-name">{repo_name || 'Repository'}</h1>
-          <a href={repo_url} target="_blank" rel="noopener noreferrer" className="repo-url">
-            {repo_url}
-          </a>
+    <>
+      <Navbar />
+      <div className="results-page">
+        <div className="container">
+        {/* Header — flex layout for repo info on left and actions on right */}
+        <div className="results-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: '20px' }}>
+          <div className="header-info">
+            <Link to="/" className="back-link">
+              <ArrowLeft size={16} />
+              <span>New Analysis</span>
+            </Link>
+            <h1 className="repo-name" style={{ marginBottom: '4px' }}>{repo_name || 'Repository'}</h1>
+            <a href={repo_url} target="_blank" rel="noopener noreferrer" className="repo-url" style={{ marginBottom: 0 }}>
+              {repo_url}
+            </a>
+          </div>
+          
+          <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+            <button 
+              className="open-editor-btn"
+              onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+              disabled={exportingFormat !== null}
+              style={{ background: 'var(--ca-bg-elevated)', border: '1px solid var(--ca-border)', color: 'var(--ca-text)' }}
+            >
+              {exportingFormat ? (
+                <>
+                  <Loader2 size={14} className="editor-btn-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download size={14} />
+                  Export Report
+                  <ChevronDown size={14} style={{ marginLeft: 4 }} />
+                </>
+              )}
+            </button>
+            {exportDropdownOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                background: 'var(--ca-bg-elevated)', border: '1px solid var(--ca-border)',
+                borderRadius: '8px', padding: '6px', zIndex: 50, display: 'flex', flexDirection: 'column', gap: '2px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)', width: '160px'
+              }}>
+                <button 
+                  onClick={() => handleExport('json')}
+                  className="filter-btn"
+                  style={{ justifyContent: 'flex-start', width: '100%', padding: '8px 12px', borderRadius: '6px' }}
+                >
+                  Raw JSON
+                </button>
+                <button 
+                  onClick={() => handleExport('pdf')}
+                  className="filter-btn"
+                  style={{ justifyContent: 'flex-start', width: '100%', padding: '8px 12px', borderRadius: '6px' }}
+                >
+                  Summary PDF
+                </button>
+              </div>
+            )}
+            </div>
+
           <button 
             className="open-editor-btn"
             onClick={handleOpenEditor}
@@ -139,6 +213,7 @@ export default function ResultsDashboard({ analysisId }) {
               </>
             )}
           </button>
+          </div>
         </div>
         
         {/* Stats Cards */}
@@ -306,6 +381,13 @@ export default function ResultsDashboard({ analysisId }) {
                                   <Microscope size={13} />
                                   Trace Origin
                                 </button>
+                                <button
+                                  className="ai-fix-btn"
+                                  onClick={() => setAiTarget(issue)}
+                                >
+                                  <Brain size={13} />
+                                  AI Fix
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -337,9 +419,18 @@ export default function ResultsDashboard({ analysisId }) {
           onClose={() => setArchaeologyTarget(null)}
         />
       )}
+
+      {/* AI Analysis Panel */}
+      {aiTarget && (
+        <AIPanel
+          issue={aiTarget}
+          onClose={() => setAiTarget(null)}
+        />
+      )}
       
       <style>{dashboardStyles}</style>
     </div>
+    </>
   );
 }
 
@@ -358,9 +449,16 @@ const dashboardStyles = `
   .results-header {
     margin-bottom: 32px;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  @media (max-width: 768px) {
+    .results-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16px;
+    }
   }
   .open-editor-btn {
     display: inline-flex;
@@ -376,7 +474,6 @@ const dashboardStyles = `
     cursor: pointer;
     font-family: var(--ca-font-sans);
     transition: all 0.15s;
-    margin-top: 12px;
   }
   .open-editor-btn:hover:not(:disabled) {
     background: var(--ca-primary-light);
@@ -749,6 +846,27 @@ const dashboardStyles = `
   .trace-btn:hover {
     background: rgba(99, 102, 241, 0.15);
     border-color: var(--ca-primary);
+  }
+  
+  .ai-fix-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    background: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    color: #a78bfa;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--ca-font-sans);
+    transition: all 0.15s;
+  }
+  
+  .ai-fix-btn:hover {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: #8b5cf6;
   }
   
   .no-issues {

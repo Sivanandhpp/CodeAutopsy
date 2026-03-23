@@ -12,8 +12,9 @@ import EditorPage from './pages/EditorPage';
 function AppLayout() {
   const location = useLocation();
   const isLanding = location.pathname === '/';
+  const isAnalysis = location.pathname.startsWith('/analysis');
   const isEditor = location.pathname.startsWith('/editor');
-  const hideNavbar = isLanding || isEditor;
+  const hideNavbar = isLanding || isAnalysis || isEditor;
 
   return (
     <>

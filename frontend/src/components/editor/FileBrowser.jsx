@@ -248,7 +248,6 @@ export default function FileBrowser({
           background: rgba(99,102,241,0.1);
           color: var(--ca-primary-light);
         }
-        .fb-folder-icon { color: var(--ca-medium); }
         .fb-file-icon { color: var(--ca-text-muted); }
         .fb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
         .fb-issue-dot {
