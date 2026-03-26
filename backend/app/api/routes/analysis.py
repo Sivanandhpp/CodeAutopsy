@@ -3,6 +3,7 @@ Analysis API Routes
 Endpoints for starting analysis, getting results, streaming progress, and reading files.
 """
 
+import os
 import uuid
 import json
 import asyncio
@@ -10,9 +11,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-from app.database import get_db, AnalysisResult
+from app.database import get_db, AnalysisResult, get_session_factory
 from app.models.schemas import (
     AnalyzeRequest, AnalyzeResponse, AnalysisResultResponse, IssueDetail
 )
@@ -20,7 +22,7 @@ from app.services.git_service import git_service
 from app.services.static_analyzer import static_analyzer
 from app.utils.progress import progress_tracker
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 
 # ─── In-memory rate limiter (simple) ─────────────────────────
@@ -51,102 +53,129 @@ def check_rate_limit(request: Request):
 
 # ─── Background Analysis Task ────────────────────────────────
 
-async def run_analysis_task(analysis_id: str, repo_url: str, db_url: str):
-    """Background task that clones repo, runs analysis, and stores results."""
-    from app.database import get_engine, get_session_factory
+async def run_analysis_task(analysis_id: str, repo_url: str):
+    """Background task that clones repo, runs analysis, and stores results via JSON caching and DB."""
+    async_session = get_session_factory()
     
-    SessionLocal = get_session_factory(db_url)
-    db = SessionLocal()
-    
-    try:
-        # Step 1: Clone repository
-        progress_tracker.update(analysis_id, 'cloning', 10, 'Cloning repository...', 'clone')
-        
-        repo_path, repo_name = git_service.clone_repository(repo_url)
-        
-        progress_tracker.update(analysis_id, 'cloning', 25, f'Repository cloned: {repo_name}', 'clone')
-        
-        # Update DB record
-        record = db.query(AnalysisResult).filter(AnalysisResult.id == analysis_id).first()
-        if record:
-            record.repo_name = repo_name
-            record.repo_path = repo_path
-            record.status = 'analyzing'
-            db.commit()
-        
-        # Step 2: Extract file tree
-        progress_tracker.update(analysis_id, 'analyzing', 35, 'Extracting file tree...', 'file_tree')
-        
-        file_tree = git_service.get_file_tree(repo_path)
-        languages = git_service.get_language_stats(file_tree)
-        total_lines = git_service.get_total_lines(file_tree)
-        
-        progress_tracker.update(
-            analysis_id, 'analyzing', 45,
-            f'Found {len(file_tree)} files, {total_lines} lines of code',
-            'file_tree'
-        )
-        
-        # Step 3: Run static analysis
-        progress_tracker.update(analysis_id, 'analyzing', 55, 'Running security analysis...', 'static_analysis')
-        
-        issues = static_analyzer.run_analysis(repo_path, file_tree)
-        
-        progress_tracker.update(
-            analysis_id, 'analyzing', 80,
-            f'Found {len(issues)} potential issues',
-            'static_analysis'
-        )
-        
-        # Step 4: Calculate health score
-        progress_tracker.update(analysis_id, 'analyzing', 90, 'Calculating health score...', 'scoring')
-        
-        health_score = static_analyzer.calculate_health_score(issues)
-        
-        # Step 5: Store results
-        progress_tracker.update(analysis_id, 'analyzing', 95, 'Saving results...', 'saving')
-        
-        # Add issue counts to file tree
-        issue_counts = {}
-        for issue in issues:
-            fp = issue.get('file_path', '')
-            issue_counts[fp] = issue_counts.get(fp, 0) + 1
-        
-        for f in file_tree:
-            f['issue_count'] = issue_counts.get(f['path'], 0)
-        
-        # Update database record
-        record = db.query(AnalysisResult).filter(AnalysisResult.id == analysis_id).first()
-        if record:
-            record.status = 'complete'
-            record.health_score = health_score
-            record.total_issues = len(issues)
-            record.file_count = len(file_tree)
-            record.total_lines = total_lines
-            record.set_languages(languages)
-            record.set_issues(issues)
-            record.set_file_tree(file_tree)
-            record.completed_at = datetime.now(timezone.utc)
-            db.commit()
-        
-        progress_tracker.update(
-            analysis_id, 'complete', 100,
-            f'Analysis complete! Health score: {health_score}/100, {len(issues)} issues found',
-            'complete'
-        )
-        
-    except Exception as e:
-        # Update status to failed
-        progress_tracker.update(analysis_id, 'failed', 0, f'Analysis failed: {str(e)}', 'error')
-        
-        record = db.query(AnalysisResult).filter(AnalysisResult.id == analysis_id).first()
-        if record:
-            record.status = 'failed'
-            record.error_message = str(e)
-            db.commit()
-    
-    finally:
-        db.close()
+    async with async_session() as db:
+        try:
+            # Step 1: Clone repository
+            progress_tracker.update(analysis_id, 'cloning', 10, 'Cloning/syncing repository...', 'clone')
+            
+            repo_path, repo_name, has_updates, changed_files = git_service.sync_repository(repo_url)
+            
+            progress_tracker.update(analysis_id, 'cloning', 25, f'Repository synced: {repo_name}', 'clone')
+            
+            # Update DB record
+            result = await db.execute(select(AnalysisResult).where(AnalysisResult.id == analysis_id))
+            record = result.scalars().first()
+            if record:
+                record.repo_name = repo_name
+                record.repo_path = repo_path
+                record.status = 'analyzing'
+                await db.commit()
+            
+            report_file = os.path.join(repo_path, 'codeautopsy_report.json')
+            cached_data = None
+            
+            if not has_updates and os.path.exists(report_file):
+                # Load from cache
+                progress_tracker.update(analysis_id, 'analyzing', 90, 'Loading cached analysis...', 'cache')
+                with open(report_file, 'r') as f:
+                    cached_data = json.load(f)
+                    
+                health_score = cached_data.get('health_score', 0)
+                issues = cached_data.get('issues', [])
+                file_tree = cached_data.get('file_tree', [])
+                languages = cached_data.get('languages', {})
+                total_lines = cached_data.get('total_lines', 0)
+            else:
+                # Step 2: Extract file tree
+                progress_tracker.update(analysis_id, 'analyzing', 35, 'Extracting file tree...', 'file_tree')
+                
+                file_tree = git_service.get_file_tree(repo_path)
+                languages = git_service.get_language_stats(file_tree)
+                total_lines = git_service.get_total_lines(file_tree)
+                
+                progress_tracker.update(
+                    analysis_id, 'analyzing', 45,
+                    f'Found {len(file_tree)} files, {total_lines} lines of code',
+                    'file_tree'
+                )
+                
+                # Step 3: Run static analysis
+                progress_tracker.update(analysis_id, 'analyzing', 55, 'Running security analysis...', 'static_analysis')
+                
+                # For partial updates in the future, we could pass `changed_files` to `run_analysis`.
+                # Currently doing full analysis if updates exist.
+                issues = static_analyzer.run_analysis(repo_path, file_tree)
+                
+                progress_tracker.update(
+                    analysis_id, 'analyzing', 80,
+                    f'Found {len(issues)} potential issues',
+                    'static_analysis'
+                )
+                
+                # Step 4: Calculate health score
+                progress_tracker.update(analysis_id, 'analyzing', 90, 'Calculating health score...', 'scoring')
+                
+                health_score = static_analyzer.calculate_health_score(issues)
+                
+                # Add issue counts to file tree
+                issue_counts = {}
+                for issue in issues:
+                    fp = issue.get('file_path', '')
+                    issue_counts[fp] = issue_counts.get(fp, 0) + 1
+                
+                for f in file_tree:
+                    f['issue_count'] = issue_counts.get(f['path'], 0)
+                
+                # Save cache
+                cached_data = {
+                    'health_score': health_score,
+                    'total_issues': len(issues),
+                    'file_count': len(file_tree),
+                    'total_lines': total_lines,
+                    'languages': languages,
+                    'issues': issues,
+                    'file_tree': file_tree
+                }
+                with open(report_file, 'w') as f:
+                    json.dump(cached_data, f)
+            
+            # Step 5: Store results in DB
+            progress_tracker.update(analysis_id, 'analyzing', 95, 'Saving results...', 'saving')
+            
+            result = await db.execute(select(AnalysisResult).where(AnalysisResult.id == analysis_id))
+            record = result.scalars().first()
+            if record:
+                record.status = 'complete'
+                record.health_score = health_score
+                record.total_issues = len(issues)
+                record.file_count = len(file_tree)
+                record.total_lines = total_lines
+                record.set_languages(languages)
+                record.set_issues(issues)
+                record.set_file_tree(file_tree)
+                record.completed_at = datetime.now(timezone.utc)
+                await db.commit()
+            
+            progress_tracker.update(
+                analysis_id, 'complete', 100,
+                f'Analysis complete! Health score: {health_score}/100, {len(issues)} issues found. Handled {"caching" if not has_updates else "new changes"}.',
+                'complete'
+            )
+            
+        except Exception as e:
+            # Update status to failed
+            progress_tracker.update(analysis_id, 'failed', 0, f'Analysis failed: {str(e)}', 'error')
+            
+            result = await db.execute(select(AnalysisResult).where(AnalysisResult.id == analysis_id))
+            record = result.scalars().first()
+            if record:
+                record.status = 'failed'
+                record.error_message = str(e)
+                await db.commit()
 
 
 # ─── Endpoints ────────────────────────────────────────────────
@@ -156,7 +185,7 @@ async def analyze_github_repo(
     req: AnalyzeRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Start analysis of a GitHub repository."""
     # Rate limiting
@@ -171,20 +200,15 @@ async def analyze_github_repo(
         status='queued',
     )
     db.add(record)
-    db.commit()
+    await db.commit()
     
     # Initialize progress tracker
     progress_tracker.create(analysis_id)
-    
-    # Start background analysis
-    from app.config import get_settings
-    settings = get_settings()
     
     background_tasks.add_task(
         run_analysis_task,
         analysis_id,
         req.repo_url,
-        settings.DATABASE_URL,
     )
     
     return AnalyzeResponse(
@@ -195,9 +219,10 @@ async def analyze_github_repo(
 
 
 @router.get("/results/{analysis_id}", response_model=AnalysisResultResponse)
-async def get_results(analysis_id: str, db: Session = Depends(get_db)):
+async def get_results(analysis_id: str, db: AsyncSession = Depends(get_db)):
     """Get analysis results by ID."""
-    record = db.query(AnalysisResult).filter(AnalysisResult.id == analysis_id).first()
+    result = await db.execute(select(AnalysisResult).where(AnalysisResult.id == analysis_id))
+    record = result.scalars().first()
     
     if not record:
         raise HTTPException(status_code=404, detail="Analysis not found")
@@ -259,10 +284,11 @@ async def stream_progress(analysis_id: str):
 async def get_file_content(
     analysis_id: str,
     file_path: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get file content from an analyzed repository."""
-    record = db.query(AnalysisResult).filter(AnalysisResult.id == analysis_id).first()
+    result = await db.execute(select(AnalysisResult).where(AnalysisResult.id == analysis_id))
+    record = result.scalars().first()
     
     if not record:
         raise HTTPException(status_code=404, detail="Analysis not found")

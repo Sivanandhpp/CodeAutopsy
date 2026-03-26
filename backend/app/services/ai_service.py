@@ -3,7 +3,7 @@ AI Service — Groq-powered code analysis
 ========================================
 
 How this works:
---------------
+---------------
 1. We use Groq's API (https://groq.com) — a blazing-fast LLM inference provider.
    Groq runs models like Meta's LLaMA on custom hardware called LPUs (Language
    Processing Units), which makes it 10-50x faster than typical GPU inference.

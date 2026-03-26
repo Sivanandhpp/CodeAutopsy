@@ -16,7 +16,18 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
     
     # Database
-    DATABASE_URL: str = "sqlite:///./data/codeautopsy.db"
+    DATABASE_URL: str = "postgresql+asyncpg://admin:secretpassword@codeautopsy-db:5432/codeautopsy"
+    
+    # JWT Auth
+    JWT_SECRET: str = "supersecretjwtkeyforcodeautopsy"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440 # 24 hours
+    
+    # SMTP (Gmail)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
     
     # CORS
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"

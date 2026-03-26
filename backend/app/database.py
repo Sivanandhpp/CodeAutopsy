@@ -1,28 +1,78 @@
 """
 CodeAutopsy Database
-SQLAlchemy models and database initialization for SQLite.
+SQLAlchemy models and database initialization for PostgreSQL via asyncpg.
 """
 
 import os
 import json
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timezone, timedelta
+from typing import AsyncGenerator
+
 from sqlalchemy import (
-    create_engine, Column, String, Integer, Text, DateTime, 
-    ForeignKey, Index, event
+    Column, String, Integer, Text, DateTime, Boolean, ForeignKey, Index
 )
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
+
+from .config import get_settings
 
 Base = declarative_base()
 
+# ─── Auth & User Models ─────────────────────────────────────────
 
-# ─── ORM Models ───────────────────────────────────────────────
+class User(Base):
+    """User account spanning login and preferences."""
+    __tablename__ = "users"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_verified = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class OTPCode(Base):
+    """Stores generated OTPs (hashed) for email verification and password reset."""
+    __tablename__ = "otp_codes"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    code = Column(String, nullable=False)  # bcrypt hash of the 6-digit code
+    purpose = Column(String, nullable=False)  # "email_verification" or "password_reset"
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False)
+
+class Project(Base):
+    """Links a user to a previously analysed repo."""
+    __tablename__ = "projects"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    repo_url = Column(String, nullable=False)
+    repo_name = Column(String, nullable=True) # e.g. "torvalds/linux"
+    last_analysed_at = Column(DateTime(timezone=True), nullable=True)
+    analysis_score = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+class UserProject(Base):
+    """Many-to-many relationship between Users and Projects."""
+    __tablename__ = "user_projects"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(String, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String, default="owner")  # owner/viewer/editor
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ─── Analysis Models ───────────────────────────────────────────────
 
 class AnalysisResult(Base):
     """Stores analysis results for a GitHub repository."""
     __tablename__ = "analysis_results"
     
-    id = Column(String, primary_key=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     repo_url = Column(String, nullable=False)
     repo_name = Column(String, nullable=True)
     status = Column(String, default="queued")  # queued, cloning, analyzing, complete, failed
@@ -34,8 +84,8 @@ class AnalysisResult(Base):
     issues = Column(Text, default="[]")  # JSON string
     file_tree = Column(Text, default="[]")  # JSON string
     error_message = Column(String, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     repo_path = Column(String, nullable=True)  # temp path to cloned repo
     
     __table_args__ = (
@@ -74,7 +124,7 @@ class GitArchaeology(Base):
     origin_commit = Column(String, nullable=True)
     author_hash = Column(String, nullable=True)
     data = Column(Text, default="{}")  # JSON string
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     __table_args__ = (
         Index("idx_arch_analysis", "analysis_id"),
@@ -97,7 +147,7 @@ class AICache(Base):
     code_hash = Column(String, unique=True, nullable=False)
     issue_type = Column(String, nullable=True)
     ai_response = Column(Text, default="{}")  # JSON string
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     __table_args__ = (
         Index("idx_cache_hash", "code_hash"),
@@ -113,62 +163,48 @@ class AICache(Base):
 # ─── Database Engine & Session ────────────────────────────────
 
 _engine = None
-_SessionLocal = None
+_async_session_maker = None
 
 
-def get_engine(database_url: str = None):
-    """Get or create the database engine."""
+def get_engine():
+    """Get or create the async database engine."""
     global _engine
     if _engine is None:
-        if database_url is None:
-            database_url = "sqlite:///./data/codeautopsy.db"
+        settings = get_settings()
+        db_url = settings.DATABASE_URL
         
-        # Ensure the data directory exists
-        if database_url.startswith("sqlite:///"):
-            db_path = database_url.replace("sqlite:///", "")
-            db_dir = os.path.dirname(db_path)
-            if db_dir:
-                os.makedirs(db_dir, exist_ok=True)
-        
-        _engine = create_engine(
-            database_url,
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
+        _engine = create_async_engine(
+            db_url,
             echo=False,
+            pool_pre_ping=True
         )
-        
-        # Enable WAL mode for better concurrent read performance
-        @event.listens_for(_engine, "connect")
-        def set_sqlite_pragma(dbapi_connection, connection_record):
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
-    
     return _engine
 
 
-def get_session_factory(database_url: str = None):
-    """Get or create the session factory."""
-    global _SessionLocal
-    if _SessionLocal is None:
-        engine = get_engine(database_url)
-        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    return _SessionLocal
+def get_session_factory():
+    """Get or create the async session factory."""
+    global _async_session_maker
+    if _async_session_maker is None:
+        engine = get_engine()
+        _async_session_maker = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+        )
+    return _async_session_maker
 
 
-def get_db():
-    """Dependency: yields a database session."""
-    SessionLocal = get_session_factory()
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Dependency: yields an async database session."""
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
 
-def create_tables(database_url: str = None):
-    """Create all database tables."""
-    engine = get_engine(database_url)
-    Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created successfully")
+async def init_db():
+    """Create all database tables asynchronously."""
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("✅ Async PostgreSQL database tables created successfully")

@@ -63,36 +63,68 @@ class GitService:
             return f"{parts[-2]}/{parts[-1]}"
         return parts[-1]
     
-    def clone_repository(self, repo_url: str) -> tuple[str, str]:
+    def sync_repository(self, repo_url: str) -> tuple[str, str, bool, list[str]]:
         """
-        Clone a GitHub repository to a temporary directory.
-        Returns (repo_path, repo_name).
-        Raises GitCommandError on failure.
+        Clones or updates a GitHub repository in a production-level sandbox (deterministic DB persistence).
+        Returns (repo_path, repo_name, has_updates, changed_files).
         """
         valid, result = self.validate_github_url(repo_url)
         if not valid:
             raise ValueError(result)
         
         repo_name = self.extract_repo_name(repo_url)
-        repo_id = str(uuid.uuid4())[:8]
-        repo_path = os.path.join(self.repos_dir, f"{repo_name.replace('/', '_')}_{repo_id}")
+        # Sandbox path is deterministic and mapped to Docker volume
+        repo_path = os.path.join(self.repos_dir, repo_name.replace('/', '_'))
         
-        os.makedirs(repo_path, exist_ok=True)
+        has_updates = False
+        changed_files = []
         
         try:
-            # Clone with limited depth for speed, but enough for archaeology
-            Repo.clone_from(
-                repo_url,
-                repo_path,
-                depth=200,  # Enough commits for archaeology
-                no_single_branch=True,
-            )
-            return repo_path, repo_name
+            if os.path.exists(repo_path) and os.path.exists(os.path.join(repo_path, '.git')):
+                # Repository exists, check for updates
+                repo = Repo(repo_path)
+                origin = repo.remotes.origin
+                
+                # Get current commit hash before fetch
+                head_commit_before = repo.head.commit.hexsha
+                
+                origin.fetch()
+                
+                # Check if the fetch brought in a new commit on the default branch
+                # For simplicity, we compare local HEAD to origin/HEAD
+                if 'origin/HEAD' in repo.refs:
+                    remote_ref = repo.refs['origin/HEAD']
+                else:
+                    # Fallback to checking master/main
+                    remote_ref = None
+                    for ref in origin.refs:
+                        if ref.name in ['origin/main', 'origin/master']:
+                            remote_ref = ref
+                            break
+                
+                if remote_ref and remote_ref.commit.hexsha != head_commit_before:
+                    has_updates = True
+                    # Get diff between old head and new remote head
+                    diffs = repo.head.commit.diff(remote_ref.commit)
+                    changed_files = [d.b_path for d in diffs if d.b_path]
+                    
+                    # Pull changes (reset to match remote)
+                    repo.head.reset(remote_ref, index=True, working_tree=True)
+            else:
+                # Need to clone fresh
+                has_updates = True 
+                os.makedirs(repo_path, exist_ok=True)
+                Repo.clone_from(
+                    repo_url,
+                    repo_path,
+                    depth=200, 
+                    no_single_branch=True,
+                )
+            
+            return repo_path, repo_name, has_updates, changed_files
+            
         except GitCommandError as e:
-            # Cleanup on failure
-            if os.path.exists(repo_path):
-                shutil.rmtree(repo_path, ignore_errors=True)
-            raise RuntimeError(f"Failed to clone repository: {str(e)}")
+            raise RuntimeError(f"Failed to sync repository: {str(e)}")
     
     def get_file_tree(self, repo_path: str) -> list[dict]:
         """

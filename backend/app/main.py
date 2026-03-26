@@ -9,12 +9,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database import create_tables
 from app.api.routes.health import router as health_router
 from app.api.routes.analysis import router as analysis_router
 from app.api.routes.archaeology import router as archaeology_router
 from app.api.routes.ai import router as ai_router
 from app.api.routes.report import router as report_router
+from app.api.routes.auth import router as auth_router
 
 
 @asynccontextmanager
@@ -26,11 +26,12 @@ async def lifespan(app: FastAPI):
     os.makedirs("data", exist_ok=True)
     os.makedirs("data/repos", exist_ok=True)
     
-    # Initialize database
-    create_tables(settings.DATABASE_URL)
+    # Initialize async database
+    from app.database import init_db
+    await init_db()
     
     print("🔬 CodeAutopsy API is running!")
-    print(f"📊 Database: {settings.DATABASE_URL}")
+    print(f"📊 Database: {settings.DATABASE_URL.replace('secretpassword', '***')}")
     print(f"🌐 CORS Origins: {settings.cors_origins_list}")
     
     yield
@@ -60,11 +61,12 @@ def create_app() -> FastAPI:
     )
     
     # Register routers
-    app.include_router(health_router, tags=["Health"])
-    app.include_router(analysis_router, tags=["Analysis"])
-    app.include_router(archaeology_router, tags=["Archaeology"])
-    app.include_router(ai_router, tags=["AI"])
-    app.include_router(report_router, tags=["Report"])
+    app.include_router(auth_router, prefix="/api", tags=["Authentication"])
+    app.include_router(health_router, prefix="/api", tags=["Health"])
+    app.include_router(analysis_router, prefix="/api", tags=["Analysis"])
+    app.include_router(archaeology_router, prefix="/api", tags=["Archaeology"])
+    app.include_router(ai_router, prefix="/api", tags=["AI"])
+    app.include_router(report_router, prefix="/api", tags=["Report"])
     
     return app
 

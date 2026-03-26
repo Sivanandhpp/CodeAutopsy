@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  codeautopsy-db:
+    image: postgres:15-alpine
+    container_name: codeautopsy-db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: codeautopsy
+    ports:
+      - "5432:5432"
+    volumes:
+      - codeautopsy-pgdata:/var/lib/postgresql/data
+    restart: always
+
+  codeautopsy-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: codeautopsy-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://admin:secretpassword@codeautopsy-db:5432/codeautopsy
+      - JWT_SECRET=supersecretjwtkeyforcodeautopsy
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=sivanandhpopzins@gmail.com
+      - SMTP_PASSWORD=wtst obtb sgln lppi
+    volumes:
+      - ./backend:/app
+      - codeautopsy-repos:/app/cloned_repos
+    depends_on:
+      - codeautopsy-db
+    restart: always
+
+  codeautopsy-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: codeautopsy-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - codeautopsy-backend
+    restart: always
+
+volumes:
+  codeautopsy-pgdata:
+  codeautopsy-repos:

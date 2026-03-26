@@ -3,14 +3,33 @@
  * Preserves all analyze functionality from the original.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { analyzeRepository } from '../lib/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { analyzeRepository, loginInit, verifyOtp, setPassword as setPasswordApi, loginPassword, logout } from '../lib/api';
 import useAnalysisStore from '../lib/analysisStore';
 
 import DotGrid from '../components/landing/DotGrid';
 import LiquidBlobs from '../components/landing/LiquidBlobs';
+
+// Auth box styles
+const authGlassStyle = {
+  position: 'absolute',
+  top: 'calc(100% + 12px)',
+  right: '0',
+  width: '320px',
+  padding: '1.5rem',
+  borderRadius: '20px',
+  backgroundColor: 'rgba(30, 33, 48, 0.7)',
+  backdropFilter: 'blur(20px)',
+  WebkitBackdropFilter: 'blur(20px)',
+  border: '1px solid rgba(255, 255, 255, 0.15)',
+  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+  zIndex: 100,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1rem',
+};
 
 export default function LandingPage() {
   const [repoUrl, setRepoUrl] = useState('');
@@ -18,6 +37,77 @@ export default function LandingPage() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { setAnalysisId, setAnalysisStatus } = useAnalysisStore();
+
+  // Auth States
+  const [user, setUser] = useState(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authStep, setAuthStep] = useState('email'); // 'email', 'login', 'otp', 'register'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  
+  const authRef = useRef(null);
+
+  useEffect(() => {
+    // Load user from local storage
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try { setUser(JSON.parse(storedUser)); } catch (e) { }
+    }
+    
+    // Click outside to close auth box
+    const handleClickOutside = (event) => {
+      if (authRef.current && !authRef.current.contains(event.target)) {
+        setShowAuth(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // --- Auth Handlers ---
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+
+    try {
+      if (authStep === 'email') {
+        const res = await loginInit(email);
+        if (res.status === 'login') {
+          setAuthStep('login');
+        } else {
+          setAuthStep('otp'); // new or unverified
+        }
+      } else if (authStep === 'login') {
+        const res = await loginPassword(email, password);
+        setUser(res.user);
+        setShowAuth(false);
+      } else if (authStep === 'otp') {
+        const res = await verifyOtp(email, otp);
+        if (res.status === 'verified') {
+          setAuthStep('register');
+        }
+      } else if (authStep === 'register') {
+        const res = await setPasswordApi(email, nickname, password);
+        setUser(res.user);
+        setShowAuth(false);
+      }
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Authentication failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    setUser(null);
+    setShowAuth(false);
+  };
 
   const handleAnalyze = async (e) => {
     if (e) e.preventDefault();
@@ -70,12 +160,138 @@ export default function LandingPage() {
 
       <div className="lp-layout">
         {/* Header */}
-        <header className="lp-header">
+        <header className="lp-header" style={{ padding: '1.5rem 3rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div className="lp-logo">
             <span className="lp-logo-text">CodeAutopsy</span>
             <span className="lp-badge">BETA</span>
           </div>
-          <button className="lp-login-btn">Login</button>
+          
+          <div className="lp-auth-container" ref={authRef} style={{ position: 'relative' }}>
+            {user ? (
+              <motion.button 
+                className="lp-login-btn"
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowAuth(!showAuth)}
+              >
+                {user.nickname || user.email.split('@')[0]}
+              </motion.button>
+            ) : (
+              <motion.button 
+                className="lp-login-btn"
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  setShowAuth(!showAuth);
+                  if (!showAuth) {
+                    setAuthStep('email');
+                    setAuthError('');
+                  }
+                }}
+              >
+                Login
+              </motion.button>
+            )}
+
+            <AnimatePresence>
+              {showAuth && (
+                <motion.div
+                  style={authGlassStyle}
+                  initial={{ opacity: 0, scale: 0.8, y: -10, originX: 1, originY: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: -10 }}
+                  transition={{ type: 'spring', bounce: 0.4, duration: 0.5 }}
+                >
+                  {user ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', color: 'white' }}>
+                      <p style={{ margin: 0, fontWeight: 500 }}>Signed in as</p>
+                      <p style={{ margin: 0, opacity: 0.7, wordBreak: 'break-all' }}>{user.email}</p>
+                      <button className="lp-btn-primary" onClick={handleLogout} style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }}>Logout</button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <h3 style={{ margin: 0, color: 'white', fontSize: '1.2rem', fontWeight: 500 }}>
+                        {authStep === 'email' && 'Welcome back'}
+                        {authStep === 'login' && 'Enter password'}
+                        {authStep === 'otp' && 'Verify Email'}
+                        {authStep === 'register' && 'Finish setup'}
+                      </h3>
+                      
+                      {authStep === 'email' && (
+                        <input
+                          type="email"
+                          className="lp-glass-field auth-input"
+                          placeholder="Email address"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                          autoFocus
+                        />
+                      )}
+
+                      {authStep === 'login' && (
+                        <>
+                          <input
+                            type="password"
+                            className="lp-glass-field auth-input"
+                            placeholder="Password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                            autoFocus
+                          />
+                          <button type="button" className="lp-hint-link" style={{ alignSelf: 'flex-start', fontSize: '0.8rem' }}>Forgot password?</button>
+                        </>
+                      )}
+
+                      {authStep === 'otp' && (
+                        <>
+                          <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>
+                            We've sent a code to {email}
+                          </p>
+                          <input
+                            type="text"
+                            className="lp-glass-field auth-input"
+                            placeholder="6-digit code"
+                            value={otp}
+                            onChange={(e) => setOtp(e.target.value)}
+                            required
+                            maxLength={6}
+                            autoFocus
+                          />
+                        </>
+                      )}
+
+                      {authStep === 'register' && (
+                        <>
+                          <input
+                            type="text"
+                            className="lp-glass-field auth-input"
+                            placeholder="Nickname (Optional)"
+                            value={nickname}
+                            onChange={(e) => setNickname(e.target.value)}
+                            autoFocus
+                          />
+                          <input
+                            type="password"
+                            className="lp-glass-field auth-input"
+                            placeholder="Create a password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                          />
+                        </>
+                      )}
+                      
+                      {authError && <p className="lp-error" style={{ alignSelf: 'flex-start', marginTop: 0 }}>{authError}</p>}
+                      
+                      <button type="submit" className="lp-btn-primary" disabled={authLoading} style={{ width: '100%', justifyContent: 'center' }}>
+                        {authLoading ? <div className="lp-spinner" /> : 'Continue'}
+                      </button>
+                    </form>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </header>
 
         {/* Main Hero */}
@@ -422,8 +638,21 @@ const landingStyles = `
   }
 
   /* ─── Responsive ─────────────────── */
+  .auth-input {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.8rem 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.95rem;
+    transition: all 0.2s;
+  }
+  .auth-input:focus {
+    border-color: rgba(99, 102, 241, 0.6);
+    background: rgba(0, 0, 0, 0.3);
+  }
+
   @media (max-width: 640px) {
-    .lp-header { padding: 1rem 1.5rem; }
+    .lp-header { padding: 1rem 1.5rem !important; }
     .lp-main { padding: 1rem; }
     .lp-glass-container { max-width: 95%; }
     .lp-hero-text { letter-spacing: -1px; }

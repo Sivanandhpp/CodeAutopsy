@@ -1,0 +1,10 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+# The code will be mounted as a volume for hot reloading
+CMD ["npm", "run", "dev", "--", "--host"]

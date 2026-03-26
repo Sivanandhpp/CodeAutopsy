@@ -15,10 +15,14 @@ const api = axios.create({
   },
 });
 
-// Request interceptor for logging
+// Request interceptor for logging and JWT auth
 api.interceptors.request.use(
   (config) => {
     console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => Promise.reject(error)
@@ -35,6 +39,43 @@ api.interceptors.response.use(
 );
 
 // ─── API Functions ───────────────────────────────────────────
+
+/**
+ * Authentication Endpoints
+ */
+export async function loginInit(email) {
+  const response = await api.post('/api/auth/login-init', { email });
+  return response.data;
+}
+
+export async function verifyOtp(email, otp) {
+  const response = await api.post('/api/auth/verify-otp', { email, otp });
+  return response.data;
+}
+
+export async function setPassword(email, nickname, password) {
+  const response = await api.post('/api/auth/set-password', { email, nickname, password });
+  if (response.data.access_token) {
+    localStorage.setItem('token', response.data.access_token);
+    localStorage.setItem('user', JSON.stringify(response.data.user));
+  }
+  return response.data;
+}
+
+export async function loginPassword(email, password) {
+  const response = await api.post('/api/auth/login-password', { email, password });
+  if (response.data.access_token) {
+    localStorage.setItem('token', response.data.access_token);
+    localStorage.setItem('user', JSON.stringify(response.data.user));
+  }
+  return response.data;
+}
+
+export function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+}
+
 
 /**
  * Start analysis of a GitHub repository
