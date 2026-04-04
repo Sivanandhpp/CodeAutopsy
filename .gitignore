@@ -42,3 +42,12 @@ htmlcov/
 # Logs
 logs/
 *.log
+
+# Docker
+pgdata/
+ollama_data/
+repo_data/
+.codeautopsy-analysis.json
+
+# Backend data
+backend/data/

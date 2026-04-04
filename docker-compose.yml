@@ -1,0 +1,124 @@
+# ─────────────────────────────────────────────────────────────
+# CodeAutopsy — Docker Compose (Development)
+# Runs all 4 services with hot-reload for backend/frontend
+# ─────────────────────────────────────────────────────────────
+
+services:
+  # ─── PostgreSQL Database ───────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: codeautopsy-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: codeautopsy
+      POSTGRES_USER: codeautopsy
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-codeautopsy_dev_2024}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codeautopsy -d codeautopsy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - codeautopsy-net
+
+  # ─── FastAPI Backend ───────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: codeautopsy-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://codeautopsy:${DB_PASSWORD:-codeautopsy_dev_2024}@db:5432/codeautopsy
+      OLLAMA_BASE_URL: http://ollama:11434
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:80"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - repo_data:/app/data/repos
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    # Override CMD for dev mode with hot-reload (single worker)
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/app
+    networks:
+      - codeautopsy-net
+
+  # ─── Vite Frontend (Dev Mode) ──────────────────────────────
+  frontend:
+    image: node:20-alpine
+    container_name: codeautopsy-frontend
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - codeautopsy-net
+
+  # ─── Ollama (Local AI) ────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: codeautopsy-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Pull the model on first start
+    entrypoint: >
+      sh -c "ollama serve &
+      sleep 5 &&
+      ollama pull qwen2.5-coder:3b &&
+      wait"
+    networks:
+      - codeautopsy-net
+
+# ─── Persistent Volumes ─────────────────────────────────────
+volumes:
+  pgdata:
+    name: codeautopsy-pgdata
+  repo_data:
+    name: codeautopsy-repos
+  ollama_data:
+    name: codeautopsy-ollama
+
+# ─── Network ────────────────────────────────────────────────
+networks:
+  codeautopsy-net:
+    name: codeautopsy-network
+    driver: bridge

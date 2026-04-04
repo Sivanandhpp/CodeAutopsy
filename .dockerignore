@@ -1,0 +1,17 @@
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/venv
+**/.venv
+**/node_modules
+**/.git
+**/.env
+**/data
+**/dist
+**/build
+**/.next
+**/.cache
+*.md
+LICENSE
+.gitignore
+docker-compose.yml
