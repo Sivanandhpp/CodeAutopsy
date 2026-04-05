@@ -81,7 +81,7 @@ async def send_otp_email(email: str, otp_code: str) -> bool:
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
-            use_tls=settings.SMTP_USE_TLS,
+            start_tls=True,  # Gmail port 587 uses STARTTLS, not implicit TLS
         )
 
         logger.info(f"OTP email sent to {email}")

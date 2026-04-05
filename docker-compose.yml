@@ -44,7 +44,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-      - repo_data:/app/data/repos
+      - repo_data:/repos_data
     depends_on:
       db:
         condition: service_healthy
@@ -70,7 +70,7 @@ services:
     container_name: codeautopsy-frontend
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm install --no-fund --no-audit && npm run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
     volumes:
@@ -93,18 +93,41 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    # Pull the model on first start
+    # Warm-up script: pull model + pre-load into memory with a dummy
+    # generate request. This ensures the first real analysis request
+    # doesn't suffer a 30-60s cold-start penalty.
     entrypoint: >
-      sh -c "ollama serve &
-      sleep 5 &&
-      ollama pull qwen2.5-coder:3b &&
-      wait"
+      sh -c "
+        ollama serve &
+        OLLAMA_PID=$$!
+
+        echo '[warm-up] Waiting for Ollama server...'
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          curl -sf http://localhost:11434/api/tags >/dev/null 2>&1 && break
+          sleep 2
+        done
+
+        echo '[warm-up] Pulling qwen2.5-coder:3b...'
+        ollama pull qwen2.5-coder:3b
+
+        echo '[warm-up] Pre-loading model into memory...'
+        curl -sf http://localhost:11434/api/generate \
+          -d '{\"model\":\"qwen2.5-coder:3b\",\"prompt\":\"hi\",\"options\":{\"num_predict\":1}}' \
+          >/dev/null 2>&1 || true
+
+        echo '[warm-up] Model is HOT and ready!'
+        wait $$OLLAMA_PID
+      "
+    healthcheck:
+      # Validates the model is actually loaded, not just that HTTP is up
+      test: >
+        sh -c "
+          curl -sf http://localhost:11434/api/tags | grep -q 'qwen2.5-coder'
+        "
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
     networks:
       - codeautopsy-net
 

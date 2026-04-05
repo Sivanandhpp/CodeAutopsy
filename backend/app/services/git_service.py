@@ -188,6 +188,24 @@ class GitService:
                 return f.read()
         except Exception as e:
             raise RuntimeError(f"Failed to read file: {str(e)}")
+            
+    def put_file_content(self, repo_path: str, file_path: str, content: str) -> None:
+        """Write file contents to the cloned repo."""
+        full_path = os.path.join(repo_path, file_path)
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+            
+        # Security: prevent path traversal
+        real_repo = os.path.realpath(repo_path)
+        real_file = os.path.realpath(full_path)
+        if not real_file.startswith(real_repo):
+            raise ValueError("Invalid file path: path traversal detected")
+            
+        try:
+            with open(full_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+        except Exception as e:
+            raise RuntimeError(f"Failed to write file: {str(e)}")
     
     def cleanup_repo(self, repo_path: str):
         """Delete the cloned repository directory."""

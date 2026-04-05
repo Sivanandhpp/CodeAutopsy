@@ -62,9 +62,9 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_ANALYSES: int = 10        # System-wide concurrent limit
 
     # ─── Paths ───────────────────────────────────────────────
-    REPOS_DIR: str = os.path.join(
+    REPOS_DIR: str = os.getenv("REPOS_DIR", "/repos_data" if os.environ.get("OLLAMA_BASE_URL") else os.path.join(
         os.path.dirname(os.path.dirname(__file__)), "data", "repos"
-    )
+    ))
 
     # ─── Derived Properties ──────────────────────────────────
     @property

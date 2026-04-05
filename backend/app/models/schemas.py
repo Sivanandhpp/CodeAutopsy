@@ -259,6 +259,7 @@ class AnalysisResultResponse(BaseModel):
     issues: list[IssueDetail] = []
     file_tree: list = []
     ollama_findings: list[OllamaFinding] = []
+    ai_summary: Optional[str] = None
     error_message: Optional[str] = None
     created_at: Optional[str] = None
     completed_at: Optional[str] = None

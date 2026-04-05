@@ -64,6 +64,7 @@ export default function CodeEditor({
   language = 'plaintext',
   issues = [],
   onLineClick,
+  onChange,
   isDark = true,
 }) {
   const editorRef = useRef(null);
@@ -169,10 +170,11 @@ export default function CodeEditor({
         height="100%"
         language={monacoLang}
         value={code}
+        onChange={onChange}
         theme={isDark ? 'vs-dark' : 'vs'}
         onMount={handleEditorMount}
         options={{
-          readOnly: true,
+          readOnly: false,
           minimap: { enabled: true },
           lineNumbers: 'on',
           scrollBeyondLastLine: false,

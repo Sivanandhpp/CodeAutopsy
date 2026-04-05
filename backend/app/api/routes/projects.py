@@ -305,3 +305,38 @@ async def remove_collaborator(
 
     logger.info(f"Collaborator {target_user_id} removed from project {project_id}")
     return {"message": "Collaborator removed successfully"}
+
+# ─── Delete Project ─────────────────────────────────────────
+
+@router.delete("/{project_id}")
+async def delete_project(
+    project_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project, its analyses, and physically remove repositories from the sandbox."""
+    project, _ = await _get_user_project(project_id, user, db, required_roles=["owner"])
+
+    import os
+    import shutil
+    import asyncio
+    
+    # 1. Physically delete repository folders
+    # Project loads analyses thanks to selectinload setup in _get_user_project
+    for analysis in project.analyses:
+        if analysis.repo_path and os.path.exists(analysis.repo_path):
+            try:
+                # Do safely in a thread to not block event loop
+                await asyncio.to_thread(shutil.rmtree, analysis.repo_path, ignore_errors=True)
+                logger.info(f"Deleted physical repo sandbox: {analysis.repo_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete repo sandbox {analysis.repo_path}: {e}")
+
+    # 2. Delete the Project record. 
+    # Provided that SQLAlchemy relationships are configured with cascade="all, delete-orphan",
+    # deleting the project will cascade delete AnalysisResult and UserProject associations.
+    await db.delete(project)
+    await db.commit()
+
+    logger.info(f"Project {project_id} and all tied analyses deleted by {user.username}")
+    return {"message": "Project and sandbox data deleted successfully"}

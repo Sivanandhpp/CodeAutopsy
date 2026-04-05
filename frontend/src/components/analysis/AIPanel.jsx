@@ -9,6 +9,8 @@ import {
   X, Brain, Loader2, Lightbulb, Wrench, Code2,
   Gauge, ListChecks, AlertTriangle, Sparkles
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { analyzeWithAI } from '../../lib/api';
 
 export default function AIPanel({ issue, onClose }) {
@@ -104,8 +106,8 @@ export default function AIPanel({ issue, onClose }) {
             {loading && (
               <div className="ai-loading">
                 <Loader2 size={28} className="ai-spin" />
-                <p>Analyzing with Groq AI...</p>
-                <span className="ai-loading-sub">Using LLaMA 3.1 · Free tier</span>
+                <p>Analyzing with Ollama AI...</p>
+                <span className="ai-loading-sub">Local LLM · Private &amp; Fast</span>
               </div>
             )}
 
@@ -151,7 +153,9 @@ export default function AIPanel({ issue, onClose }) {
                     <Lightbulb size={16} />
                     <h3>Root Cause</h3>
                   </div>
-                  <p className="ai-section-text">{result.root_cause}</p>
+                  <div className="ai-section-text ai-md-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.root_cause}</ReactMarkdown>
+                  </div>
                 </div>
 
                 {/* Fix Strategy */}
@@ -160,7 +164,9 @@ export default function AIPanel({ issue, onClose }) {
                     <Wrench size={16} />
                     <h3>Fix Strategy</h3>
                   </div>
-                  <p className="ai-section-text">{result.fix_strategy}</p>
+                  <div className="ai-section-text ai-md-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.fix_strategy}</ReactMarkdown>
+                  </div>
                 </div>
 
                 {/* Code Patch */}
@@ -192,7 +198,7 @@ export default function AIPanel({ issue, onClose }) {
                 {/* Footer */}
                 <div className="ai-footer">
                   <Sparkles size={12} />
-                  <span>Powered by Groq · LLaMA 3.1 8B</span>
+                  <span>Powered by Ollama · Local LLM</span>
                 </div>
               </>
             )}
@@ -434,4 +440,33 @@ const aiPanelStyles = `
     .ai-modal { max-height: 90vh; border-radius: 12px; }
     .ai-body { padding: 16px; }
   }
+
+  /* Markdown rendered inside AIPanel sections */
+  .ai-md-content p {
+    color: var(--ca-text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.65;
+    margin: 0 0 8px;
+  }
+  .ai-md-content p:last-child { margin-bottom: 0; }
+  .ai-md-content ul, .ai-md-content ol {
+    margin: 6px 0 8px;
+    padding-left: 18px;
+    color: var(--ca-text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.6;
+  }
+  .ai-md-content li { margin-bottom: 4px; }
+  .ai-md-content code {
+    background: rgba(99,102,241,0.12);
+    border: 1px solid rgba(99,102,241,0.2);
+    color: #a5b4fc;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: var(--ca-font-mono);
+    font-size: 0.8em;
+  }
+  .ai-md-content strong { font-weight: 700; color: var(--ca-text); }
+  .ai-md-content em { color: #c4b5fd; font-style: italic; }
 `;
+

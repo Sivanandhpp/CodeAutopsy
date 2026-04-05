@@ -12,7 +12,7 @@ import FileBrowser from '../components/editor/FileBrowser';
 import CodeEditor from '../components/editor/CodeEditor';
 import ProblemsPanel from '../components/editor/ProblemsPanel';
 import ArchaeologyPanel from '../components/archaeology/ArchaeologyPanel';
-import { getAnalysisResults, getFileContent } from '../lib/api';
+import { getAnalysisResults, getFileContent, updateFileContent } from '../lib/api';
 import useThemeStore from '../lib/themeStore';
 import useAnalysisStore from '../lib/analysisStore';
 
@@ -32,6 +32,8 @@ export default function EditorPage() {
   const [fileCode, setFileCode] = useState('');
   const [fileLanguage, setFileLanguage] = useState('plaintext');
   const [fileLoading, setFileLoading] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
 
 
   // Archaeology
@@ -81,8 +83,14 @@ export default function EditorPage() {
       const data = await getFileContent(analysisId, filePath);
       setFileCode(data.content || '');
       setFileLanguage(data.language || 'plaintext');
+      setIsDirty(false);
     } catch (e) {
-      setFileCode(`// Error loading file: ${e.message || 'Unknown error'}`);
+      const status = e.response?.status;
+      if (status === 410) {
+        setFileCode(`// Repository files have been cleaned up after analysis.\n// File content is no longer available.\n// Re-run the analysis to view files again.`);
+      } else {
+        setFileCode(`// Error loading file: ${e.response?.data?.detail || e.message || 'Unknown error'}`);
+      }
       setFileLanguage('plaintext');
     } finally {
       setFileLoading(false);
@@ -121,6 +129,26 @@ export default function EditorPage() {
       issueType: issue.issue_type,
     });
   }, []);
+
+  const handleCodeEdit = useCallback((newValue) => {
+    setFileCode(newValue);
+    setIsDirty(true);
+  }, []);
+
+  const handleSave = async () => {
+    if (!isDirty || !selectedFile) return;
+    setSaving(true);
+    try {
+      await updateFileContent(analysisId, selectedFile, fileCode);
+      setIsDirty(false);
+    } catch (err) {
+      console.error('Save failed:', err);
+      // Small visual feedback natively
+      alert(`Failed to save: ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -166,8 +194,18 @@ export default function EditorPage() {
           )}
         </div>
 
-        {/* Right: Theme + Login */}
+        {/* Right: Theme toggle + Save button */}
         <div className="ep-bar-right">
+          {selectedFile && (
+            <button 
+              className={`ep-btn-save ${isDirty ? 'dirty' : ''}`}
+              onClick={handleSave}
+              disabled={!isDirty || saving}
+            >
+              {saving ? <Loader2 size={14} className="ep-spin" /> : 'Save'}
+            </button>
+          )}
+
           <motion.button
             className="ep-bar-theme"
             onClick={toggleTheme}
@@ -186,7 +224,6 @@ export default function EditorPage() {
               </motion.div>
             </AnimatePresence>
           </motion.button>
-          <button className="ep-bar-login">Login</button>
         </div>
       </div>
 
@@ -214,6 +251,7 @@ export default function EditorPage() {
                 language={fileLanguage}
                 issues={currentFileIssues}
                 onLineClick={handleJumpToLine}
+                onChange={handleCodeEdit}
                 isDark={isDark}
               />
             ) : (
@@ -330,9 +368,35 @@ const editorPageStyles = `
   .ep-bar-right {
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
+    gap: 12px;
   }
+  
+  .ep-btn-save {
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--ca-border);
+    background: var(--ca-bg-card);
+    color: var(--ca-text-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: not-allowed;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+  }
+  .ep-btn-save.dirty {
+    background: var(--ca-primary);
+    color: white;
+    border-color: var(--ca-primary);
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.4);
+  }
+  .ep-btn-save.dirty:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+  }
+
   .ep-bar-theme {
     display: flex;
     align-items: center;

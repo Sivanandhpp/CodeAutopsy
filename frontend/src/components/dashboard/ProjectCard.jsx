@@ -4,12 +4,14 @@
  * Shows repo info, health score, collaborators, and quick actions.
  */
 
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   GitBranch, BarChart3, FileCode, Clock, Users,
-  ExternalLink, Play, Eye,
+  ExternalLink, Play, Eye, Trash2, Loader2,
 } from 'lucide-react';
+import { deleteProject } from '../../lib/api';
 
 function getScoreColor(score) {
   if (score >= 80) return '#10b981';
@@ -44,6 +46,7 @@ export default function ProjectCard({ project, index, onManageCollab, onRefresh 
   const score = analysis?.health_score ?? null;
   const scoreColor = score !== null ? getScoreColor(score) : '#64748b';
   const isAnalyzing = analysis?.status === 'analyzing' || analysis?.status === 'cloning' || analysis?.status === 'queued';
+  const [deleting, setDeleting] = useState(false);
 
   const handleViewResults = () => {
     if (analysis?.id) navigate(`/analysis/${analysis.id}`);
@@ -51,6 +54,19 @@ export default function ProjectCard({ project, index, onManageCollab, onRefresh 
 
   const handleOpenEditor = () => {
     if (analysis?.id) navigate(`/editor/${analysis.id}`);
+  };
+
+  const handleDelete = async () => {
+    const isSure = window.confirm("Are you sure you want to delete this repository and all its analyses completely from the physical sandbox?");
+    if (!isSure) return;
+    setDeleting(true);
+    try {
+      await deleteProject(project.id);
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      alert("Failed to delete project: " + (e.response?.data?.detail || e.message));
+      setDeleting(false);
+    }
   };
 
   return (
@@ -154,7 +170,18 @@ export default function ProjectCard({ project, index, onManageCollab, onRefresh 
             <Play size={14} /> View Progress
           </button>
         )}
-        <a className="pc-action pc-action-ext" href={project.repo_url} target="_blank" rel="noreferrer">
+        
+        {project.role === 'owner' && (
+          <button 
+            className="pc-action pc-action-danger" 
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Delete Repository and Sandbox"
+          >
+            {deleting ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+          </button>
+        )}
+        <a className="pc-action pc-action-ext" href={project.repo_url} target="_blank" rel="noreferrer" title="Open in GitHub">
           <ExternalLink size={14} />
         </a>
       </div>
@@ -352,5 +379,9 @@ const projectCardStyles = `
   }
   .pc-action:hover { border-color: var(--ca-primary); color: var(--ca-primary); }
   .pc-action-go { border-color: #6366f1; color: #818cf8; }
+  .pc-action-danger { color: #f87171; border-color: transparent; }
+  .pc-action-danger:hover { color: #ef4444; border-color: #ef4444; background: rgba(239,68,68,0.1); }
   .pc-action-ext { margin-left: auto; padding: 6px 8px; }
+  .spin { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 `;

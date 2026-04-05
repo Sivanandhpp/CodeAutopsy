@@ -151,21 +151,141 @@ export async function getAnalysisResults(analysisId) {
   return response.data;
 }
 
-export function subscribeToProgress(analysisId, onMessage, onError) {
+/**
+ * Subscribe to analysis progress via Server-Sent Events.
+ * 
+ * The backend emits named events for each pipeline phase:
+ *   - status          → cloning/analyzing progress
+ *   - static_complete → Phase 1 done (static issues + health score)
+ *   - stack_detected  → detected language + frameworks
+ *   - ollama_start    → AI analysis beginning (total file count)
+ *   - file_result     → one file analyzed by AI (streamed progressively)
+ *   - file_error      → one file failed (non-fatal)
+ *   - ollama_complete → Phase 2 done
+ *   - complete        → everything finished
+ *   - error           → fatal error
+ *
+ * @param {string} analysisId - The analysis UUID
+ * @param {object} store - The Zustand analysis store instance
+ * @returns {EventSource} - The event source (call .close() to disconnect)
+ */
+export function subscribeToProgress(analysisId, store) {
   const eventSource = new EventSource(`${API_BASE_URL}/api/analyze/stream/${analysisId}`);
 
-  eventSource.onmessage = (event) => {
+  // ─── Phase 1: Generic progress (cloning, scanning) ────
+  eventSource.addEventListener('status', (e) => {
     try {
-      const data = JSON.parse(event.data);
-      onMessage(data);
-    } catch (e) {
-      console.error('[SSE] Parse error:', e);
+      const data = JSON.parse(e.data);
+      store.updateProgress(data.progress || 0, data.message || '');
+      if (data.status) store.setAnalysisStatus(data.status);
+    } catch (err) {
+      console.warn('[SSE] Failed to parse status event:', err);
     }
-  };
+  });
 
-  eventSource.onerror = (error) => {
-    console.error('[SSE] Connection error:', error);
-    if (onError) onError(error);
+  // ─── Phase 1 Complete: Static results ─────────────────
+  eventSource.addEventListener('static_complete', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      store.handleStaticComplete(data);
+    } catch (err) {
+      console.warn('[SSE] Failed to parse static_complete event:', err);
+    }
+  });
+
+  // ─── Stack Detection ──────────────────────────────────
+  eventSource.addEventListener('stack_detected', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      store.handleStackDetected(data);
+    } catch (err) {
+      console.warn('[SSE] Failed to parse stack_detected event:', err);
+    }
+  });
+
+  // ─── Phase 2: AI Analysis Starting ────────────────────
+  eventSource.addEventListener('ai_summary_start', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      store.handleAiSummaryStart(data);
+    } catch (err) {
+      console.warn('[SSE] Failed to parse ai_summary_start event:', err);
+    }
+  });
+
+  // ─── Phase 2: Per-file AI Result (streaming) ──────────
+  eventSource.addEventListener('ai_summary_chunk', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      store.handleAiSummaryChunk(data);
+    } catch (err) {
+      console.warn('[SSE] Failed to parse ai_summary_chunk event:', err);
+    }
+  });
+
+  // ─── Phase 2: File Error (non-fatal) ──────────────────
+  eventSource.addEventListener('ai_summary_error', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      store.handleAiSummaryError(data);
+    } catch (err) {
+      console.warn('[SSE] Failed to parse ai_summary_error event:', err);
+    }
+  });
+
+  // ─── Phase 2: AI Analysis Complete ────────────────────
+  eventSource.addEventListener('ai_summary_complete', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      store.handleAiSummaryComplete(data);
+    } catch (err) {
+      console.warn('[SSE] Failed to parse ai_summary_complete event:', err);
+    }
+  });
+
+  // ─── Ollama Unavailable ───────────────────────────────
+  eventSource.addEventListener('ollama_unavailable', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      store.handleAiSummaryUnavailable(data);
+      console.info('[AI] Ollama unavailable:', data.message);
+    } catch {
+      // Silently ignore
+    }
+  });
+
+  // ─── Final Completion ─────────────────────────────────
+  eventSource.addEventListener('complete', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      store.handleComplete(data);
+    } catch (err) {
+      console.warn('[SSE] Failed to parse complete event:', err);
+    }
+    eventSource.close();
+  });
+
+  // ─── Error Event ──────────────────────────────────────
+  eventSource.addEventListener('analysis_error', (e) => {
+    // Check if this is a named error event from the server
+    if (e.data) {
+      try {
+        const data = JSON.parse(e.data);
+        store.handleError(data);
+      } catch (err) {
+        console.warn('[SSE] Failed to parse analysis_error event:', err);
+      }
+    }
+    eventSource.close();
+  });
+
+  // ─── Native connection error ──────────────────────────
+  eventSource.onerror = () => {
+    // Connection lost — only treat as error if we haven't completed
+    const currentStatus = store.getState?.()?.analysisStatus;
+    if (currentStatus && !['complete', 'error'].includes(currentStatus)) {
+      console.error('[SSE] Connection lost');
+    }
     eventSource.close();
   };
 
@@ -261,6 +381,19 @@ export async function downloadReport(analysisId, format = 'json') {
 
 export async function checkHealth() {
   const response = await api.get('/health');
+  return response.data;
+}
+
+export async function updateFileContent(analysisId, filePath, content) {
+  const response = await api.put(`/api/files/${analysisId}`, {
+    file_path: filePath,
+    content: content,
+  });
+  return response.data;
+}
+
+export async function deleteProject(projectId) {
+  const response = await api.delete(`/api/projects/${projectId}`);
   return response.data;
 }
 

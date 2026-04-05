@@ -1,16 +1,15 @@
 """
-Ollama Service — Local AI Code Analysis
-=========================================
-Integrates with Ollama (qwen2.5-coder:3b) for deep code analysis.
-Analyzes files for bugs, vulnerabilities, performance issues, and code smells.
-Returns structured JSON findings with severity levels and actionable fixes.
+Ollama Service - AI Summary Streaming
+=====================================
+Generates a concise markdown summary of static analysis findings and streams
+the response incrementally back to the frontend.
 """
 
 import asyncio
 import json
 import logging
-from pathlib import Path
-from typing import Optional
+from collections import Counter
+from typing import Awaitable, Callable
 
 import httpx
 
@@ -18,248 +17,287 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# ─── Semaphore for concurrency control ───────────────────────
-_semaphore: Optional[asyncio.Semaphore] = None
+SendEvent = Callable[[str, dict], Awaitable[None]]
 
-
-def _get_semaphore() -> asyncio.Semaphore:
-    global _semaphore
-    if _semaphore is None:
-        settings = get_settings()
-        _semaphore = asyncio.Semaphore(settings.OLLAMA_MAX_CONCURRENT)
-    return _semaphore
-
-
-# ─── System Prompt ───────────────────────────────────────────
-ANALYSIS_SYSTEM_PROMPT = """You are an expert code reviewer and security auditor.
-Analyze the provided code and identify issues in these categories:
-
-1. **Critical Bugs** — Logic errors, null pointer dereferences, race conditions, data corruption
-2. **Security Vulnerabilities** — Injection flaws, auth bypasses, data exposure, unsafe deserialization
-3. **Performance Issues** — N+1 queries, memory leaks, blocking I/O, unnecessary allocations
-4. **Code Smells** — God functions, tight coupling, magic numbers, code duplication, poor naming
-
-For each finding, provide:
-- `type`: one of "bug", "vulnerability", "performance", "code_smell"
-- `severity`: one of "critical", "high", "medium", "low"
-- `line`: the line number (integer or null if general)
-- `description`: clear explanation of the issue (1-2 sentences)
-- `fix`: concise actionable fix suggestion (1-2 sentences)
-- `category`: specific subcategory (e.g. "sql-injection", "memory-leak", "god-function")
-
-You MUST respond with ONLY valid JSON. No markdown, no explanation outside JSON.
-Use this exact format:
-{
-  "findings": [
-    {
-      "type": "vulnerability",
-      "severity": "critical",
-      "line": 42,
-      "description": "SQL query built with string concatenation allows injection",
-      "fix": "Use parameterized queries with bound parameters instead",
-      "category": "sql-injection"
-    }
-  ]
+SEVERITY_ORDER = {
+    "critical": 0,
+    "high": 1,
+    "medium": 2,
+    "low": 3,
+    "info": 4,
 }
+MAX_REPRESENTATIVE_ISSUES = 18
+MAX_TOP_TYPES = 8
+MIN_TOTAL_TIMEOUT_SECONDS = 240
+RETRYABLE_EXCEPTIONS = (
+    httpx.ReadTimeout,
+    httpx.ReadError,
+    httpx.RemoteProtocolError,
+)
 
-If no issues are found, return: {"findings": []}
-Be conservative — only report genuine issues, not style preferences.
-Focus on actionable findings that developers should fix."""
+SUMMARY_PROMPT = """You are an expert security and code quality analyst.
+You are given a condensed summary of issues found during a static analysis scan.
+Write a concise markdown executive summary with these sections:
+
+## Critical Risks
+## Repeating Patterns
+## Recommended Actions
+
+Guidelines:
+- Prioritize the highest-severity risks first.
+- Group repeated findings instead of listing every issue.
+- Mention approximate counts when it helps.
+- Keep the response practical and skimmable.
+- If the repository is clean, say so plainly.
+
+Static analysis summary:
+{scan_summary}
+"""
 
 
-def _build_analysis_prompt(content: str, language: str, file_path: str) -> str:
-    """Build the user prompt for file analysis."""
-    # Truncate very large files to avoid overwhelming the model
-    max_chars = 6000
-    if len(content) > max_chars:
-        content = content[:max_chars] + "\n\n... [truncated for analysis]"
-
-    return (
-        f"Analyze this {language} file for bugs, security vulnerabilities, "
-        f"performance issues, and code smells.\n\n"
-        f"**File:** `{file_path}`\n"
-        f"**Language:** {language}\n\n"
-        f"```{language}\n{content}\n```\n\n"
-        f"Return your findings as JSON."
-    )
+def _normalize_exception_message(exc: Exception) -> str:
+    message = str(exc).strip()
+    if message:
+        return message
+    return exc.__class__.__name__
 
 
-# ─── Core Analysis Function ─────────────────────────────────
+def _top_counts(items: list[dict], key: str, limit: int) -> dict[str, int]:
+    counter = Counter()
+    for item in items:
+        value = str(item.get(key, "") or "").strip()
+        if value:
+            counter[value] += 1
+    return dict(counter.most_common(limit))
 
-async def analyze_file(
-    content: str,
-    language: str,
-    file_path: str,
-) -> list[dict]:
-    """
-    Analyze a single file using the local Ollama model.
-    Returns a list of finding dicts.
-    Thread-safe with semaphore-based concurrency control.
-    """
-    settings = get_settings()
 
-    if not settings.OLLAMA_ENABLED:
-        return []
+def _representative_issues(issues: list[dict]) -> list[dict]:
+    sampled: list[dict] = []
+    seen: set[tuple[str, str, int, str]] = set()
 
-    semaphore = _get_semaphore()
+    for issue in sorted(
+        issues,
+        key=lambda item: (
+            SEVERITY_ORDER.get(item.get("severity", "info"), 4),
+            str(item.get("issue_type", "")),
+            str(item.get("file_path", "")),
+            int(item.get("line_number", 0) or 0),
+        ),
+    ):
+        key = (
+            str(issue.get("issue_type", "")),
+            str(issue.get("file_path", "")),
+            int(issue.get("line_number", 0) or 0),
+            str(issue.get("message", "")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        sampled.append({
+            "file": issue.get("file_path", ""),
+            "line": int(issue.get("line_number", 0) or 0),
+            "severity": issue.get("severity", "low"),
+            "type": issue.get("issue_type", "unknown"),
+            "message": str(issue.get("message", ""))[:180],
+        })
+        if len(sampled) >= MAX_REPRESENTATIVE_ISSUES:
+            break
 
-    async with semaphore:
-        try:
-            async with httpx.AsyncClient(timeout=settings.OLLAMA_TIMEOUT) as client:
-                response = await client.post(
-                    f"{settings.OLLAMA_BASE_URL}/api/chat",
+    return sampled
+
+
+def _build_summary_prompt(issues: list[dict]) -> str:
+    severity_counts = {
+        severity: 0 for severity in ("critical", "high", "medium", "low", "info")
+    }
+    for issue in issues:
+        severity = str(issue.get("severity", "info")).lower()
+        if severity in severity_counts:
+            severity_counts[severity] += 1
+
+    payload = {
+        "total_issues": len(issues),
+        "severity_counts": severity_counts,
+        "top_issue_types": _top_counts(issues, "issue_type", MAX_TOP_TYPES),
+        "top_categories": _top_counts(issues, "category", 6),
+        "representative_issues": _representative_issues(issues),
+    }
+
+    return SUMMARY_PROMPT.format(scan_summary=json.dumps(payload, indent=2))
+
+
+class OllamaAnalyzer:
+    """Streaming AI analyzer that summarizes static issues over SSE."""
+
+    def __init__(self, repo_path: str = ""):
+        self.settings = get_settings()
+        self._cancelled = False
+
+    def cancel(self):
+        """Signal cancellation from outside."""
+        self._cancelled = True
+
+    async def stream_summary(self, issues: list[dict], send_event: SendEvent) -> str:
+        """Generate and stream an AI summary of static analysis issues."""
+        if not self.settings.OLLAMA_ENABLED:
+            logger.info("Ollama is disabled; skipping AI analysis")
+            return ""
+
+        if not await is_ollama_available():
+            logger.warning("Ollama model not available; skipping AI analysis")
+            await send_event("ollama_unavailable", {
+                "message": "AI model not loaded. Static analysis results are still available.",
+            })
+            return ""
+
+        await send_event("ai_summary_start", {
+            "message": "Generating AI summary of findings...",
+        })
+
+        if not issues:
+            msg = "No issues were found during static analysis. The codebase looks clean and healthy!"
+            await send_event("ai_summary_chunk", {"text": msg})
+            await send_event("ai_summary_complete", {
+                "summary": msg,
+                "message": "AI summary complete!",
+                "status": "complete",
+            })
+            return msg
+
+        prompt = _build_summary_prompt(issues)
+        collected_text = ""
+        last_error: Exception | None = None
+
+        for attempt in range(2):
+            if self._cancelled:
+                logger.info("Summary streaming cancelled before attempt %s", attempt + 1)
+                break
+
+            if attempt > 0:
+                await self._warmup_model()
+
+            try:
+                collected_text = await self._stream_generate(prompt, send_event)
+                await send_event("ai_summary_complete", {
+                    "summary": collected_text,
+                    "message": "AI summary complete!",
+                    "status": "complete",
+                })
+                return collected_text
+            except RETRYABLE_EXCEPTIONS as exc:
+                last_error = exc
+                logger.warning(
+                    "Ollama summary attempt %s/%s failed with %s: %s",
+                    attempt + 1,
+                    2,
+                    exc.__class__.__name__,
+                    _normalize_exception_message(exc),
+                )
+                if attempt == 0:
+                    continue
+            except asyncio.TimeoutError as exc:
+                last_error = exc
+                logger.warning(
+                    "Ollama summary attempt %s/%s exceeded total timeout budget",
+                    attempt + 1,
+                    2,
+                )
+                if attempt == 0:
+                    continue
+            except Exception as exc:
+                last_error = exc
+                logger.exception(
+                    "Ollama summary attempt %s/%s failed unexpectedly",
+                    attempt + 1,
+                    2,
+                )
+                break
+
+        failure_detail = _normalize_exception_message(last_error) if last_error else "Unknown summary error"
+        logger.error(
+            "Ollama summary failed after retries: %s (%s)",
+            failure_detail,
+            last_error.__class__.__name__ if last_error else "UnknownError",
+        )
+        await send_event("ai_summary_error", {
+            "message": "AI summary unavailable. Static analysis results are still available.",
+            "detail": failure_detail,
+        })
+        await send_event("ai_summary_complete", {
+            "summary": "",
+            "message": "AI summary unavailable.",
+            "status": "failed",
+        })
+        return ""
+
+    async def _stream_generate(self, prompt: str, send_event: SendEvent) -> str:
+        total_timeout = max(int(self.settings.OLLAMA_TIMEOUT), MIN_TOTAL_TIMEOUT_SECONDS)
+        timeout = httpx.Timeout(connect=10.0, write=30.0, read=None, pool=10.0)
+        collected_parts: list[str] = []
+
+        async with asyncio.timeout(total_timeout):
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.settings.OLLAMA_BASE_URL}/api/generate",
                     json={
-                        "model": settings.OLLAMA_MODEL,
-                        "messages": [
-                            {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
-                            {
-                                "role": "user",
-                                "content": _build_analysis_prompt(
-                                    content, language, file_path
-                                ),
-                            },
-                        ],
-                        "stream": False,
-                        "format": "json",
+                        "model": self.settings.OLLAMA_MODEL,
+                        "prompt": prompt,
+                        "stream": True,
                         "options": {
                             "temperature": 0.2,
-                            "num_predict": 2048,
+                            "num_predict": 640,
                         },
                     },
-                )
-                response.raise_for_status()
+                ) as response:
+                    response.raise_for_status()
 
-            data = response.json()
-            message_content = data.get("message", {}).get("content", "")
+                    async for line in response.aiter_lines():
+                        if self._cancelled:
+                            logger.info("Summary streaming cancelled by caller")
+                            break
+                        if not line.strip():
+                            continue
 
-            # Parse JSON response
-            parsed = json.loads(message_content)
-            findings = parsed.get("findings", [])
+                        try:
+                            chunk = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
 
-            # Validate and normalize findings
-            valid_findings = []
-            for f in findings:
-                if not isinstance(f, dict):
-                    continue
-                valid_findings.append({
-                    "file_path": file_path,
-                    "type": f.get("type", "code_smell"),
-                    "severity": f.get("severity", "low"),
-                    "line": f.get("line"),
-                    "description": f.get("description", ""),
-                    "fix": f.get("fix", ""),
-                    "category": f.get("category", ""),
-                })
+                        token = chunk.get("response", "")
+                        if token:
+                            collected_parts.append(token)
+                            await send_event("ai_summary_chunk", {"text": token})
 
-            logger.info(
-                f"Ollama analyzed {file_path}: {len(valid_findings)} findings"
-            )
-            return valid_findings
+                        if chunk.get("done", False):
+                            break
 
-        except httpx.TimeoutException:
-            logger.warning(f"Ollama timeout for {file_path}")
-            return []
-        except json.JSONDecodeError as e:
-            logger.warning(f"Ollama returned invalid JSON for {file_path}: {e}")
-            return []
-        except httpx.HTTPStatusError as e:
-            logger.warning(f"Ollama HTTP error for {file_path}: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Ollama analysis failed for {file_path}: {e}")
-            return []
+        return "".join(collected_parts)
 
-
-async def analyze_files_batch(
-    files: list[dict],
-    repo_path: str,
-    progress_callback=None,
-) -> list[dict]:
-    """
-    Analyze multiple files concurrently with Ollama.
-    
-    Args:
-        files: List of dicts with 'path' and 'language' keys
-        repo_path: Root path of the cloned repository
-        progress_callback: Optional async callback(files_done, total_files)
-    
-    Returns:
-        Combined list of all findings from all files
-    """
-    settings = get_settings()
-
-    if not settings.OLLAMA_ENABLED:
-        return []
-
-    # Filter to analyzable languages
-    analyzable_langs = {
-        "python", "javascript", "typescript", "java", "go", "ruby",
-        "php", "c", "c++", "c#", "rust", "kotlin", "swift", "shell",
-    }
-
-    target_files = [
-        f for f in files
-        if f.get("language", "").lower() in analyzable_langs
-        and f.get("lines", 0) > 5      # Skip trivially small files
-        and f.get("lines", 0) < 2000    # Skip very large files
-    ]
-
-    if not target_files:
-        return []
-
-    # Check if Ollama is available
-    if not await is_ollama_available():
-        logger.warning("Ollama is not available — skipping AI analysis")
-        return []
-
-    all_findings = []
-    total = len(target_files)
-    done = 0
-
-    # Process in batches using gather with semaphore-controlled concurrency
-    async def _process_file(file_info: dict) -> list[dict]:
-        nonlocal done
+    async def _warmup_model(self) -> None:
+        """Prime Ollama before retrying a failed summary request."""
+        timeout = httpx.Timeout(connect=10.0, write=10.0, read=None, pool=10.0)
         try:
-            full_path = Path(repo_path) / file_info["path"]
-            if not full_path.exists():
-                return []
-
-            content = full_path.read_text(encoding="utf-8", errors="ignore")
-            if not content.strip():
-                return []
-
-            findings = await analyze_file(
-                content=content,
-                language=file_info["language"],
-                file_path=file_info["path"],
+            async with asyncio.timeout(60):
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.post(
+                        f"{self.settings.OLLAMA_BASE_URL}/api/generate",
+                        json={
+                            "model": self.settings.OLLAMA_MODEL,
+                            "prompt": "hi",
+                            "stream": False,
+                            "options": {
+                                "num_predict": 1,
+                            },
+                        },
+                    )
+                    response.raise_for_status()
+        except Exception as exc:
+            logger.warning(
+                "Ollama warm-up request failed before retry: %s: %s",
+                exc.__class__.__name__,
+                _normalize_exception_message(exc),
             )
-            return findings
-        except Exception as e:
-            logger.error(f"Failed to process {file_info.get('path')}: {e}")
-            return []
-        finally:
-            done += 1
-            if progress_callback:
-                try:
-                    await progress_callback(done, total)
-                except Exception:
-                    pass
-
-    # Run all analyses concurrently (semaphore controls actual parallelism)
-    tasks = [_process_file(f) for f in target_files]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    for result in results:
-        if isinstance(result, list):
-            all_findings.extend(result)
-        elif isinstance(result, Exception):
-            logger.error(f"File analysis task failed: {result}")
-
-    logger.info(
-        f"Ollama batch analysis complete: "
-        f"{total} files → {len(all_findings)} findings"
-    )
-    return all_findings
 
 
 async def is_ollama_available() -> bool:

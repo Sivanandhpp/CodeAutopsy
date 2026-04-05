@@ -41,6 +41,7 @@ class AnalysisResult(Base):
     issues = Column(Text, default="[]")           # JSON string
     file_tree = Column(Text, default="[]")        # JSON string
     ollama_findings = Column(Text, default="[]")  # JSON: local AI analysis results
+    ai_summary = Column(Text, nullable=True)      # Live summary of static issues
     error_message = Column(String(2000), nullable=True)
     commit_sha = Column(String(64), nullable=True)  # HEAD SHA at analysis time
     repo_path = Column(String(500), nullable=True)   # Cloned repo path
@@ -98,6 +99,12 @@ class AnalysisResult(Base):
 
     def set_ollama_findings(self, findings: list) -> None:
         self.ollama_findings = json.dumps(findings, default=str)
+        
+    def get_ai_summary(self) -> str:
+        return self.ai_summary or ""
+        
+    def set_ai_summary(self, summary: str) -> None:
+        self.ai_summary = summary
 
     def __repr__(self) -> str:
         return f"<AnalysisResult {self.id[:8]} status={self.status}>"
