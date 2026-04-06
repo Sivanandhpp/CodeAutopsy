@@ -79,7 +79,7 @@ class OllamaProvider(AIProvider):
     async def generate_fix(
         self,
         code_snippet: str,
-        issue_type: str,
+        defect_family: str,
         language: str = "python",
         file_path: Optional[str] = None,
         line_number: Optional[int] = None,
@@ -89,7 +89,7 @@ class OllamaProvider(AIProvider):
         settings = get_settings()
 
         # Cache lookup
-        cache_key = ai_cache.make_key("fix", code_snippet, issue_type, language)
+        cache_key = ai_cache.make_key("fix", code_snippet, defect_family, language)
         cached = ai_cache.get(cache_key)
         if cached is not None:
             cached["cached"] = True
@@ -97,7 +97,7 @@ class OllamaProvider(AIProvider):
             return cached
 
         user_prompt = build_fix_user_prompt(
-            code_snippet, issue_type, language,
+            code_snippet, defect_family, language,
             file_path, context_before, context_after,
         )
 

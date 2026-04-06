@@ -196,7 +196,7 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
         })
 
         repo_path, repo_name = await asyncio.to_thread(
-            git_service.clone_repository, repo_url
+            git_service.clone_repository, repo_url, analysis_id
         )
 
         await _emit_event(analysis_id, "status", {
@@ -214,6 +214,7 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
         record = result.scalar_one_or_none()
         if record:
             record.repo_name = repo_name
+            record.clone_path = repo_path
             record.repo_path = repo_path
             record.status = "analyzing"
             record.commit_sha = head_sha
@@ -241,7 +242,7 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
             "message": "Running security scan...", "step": "static_analysis",
         })
 
-        issues = await asyncio.to_thread(static_analyzer.run_analysis, repo_path, file_tree)
+        issues = await static_analyzer.run_analysis(repo_path, db, file_tree)
 
         # Calculate health score immediately (Phase 1 result)
         health_score = static_analyzer.calculate_health_score(issues)
@@ -375,6 +376,27 @@ def _get_head_sha(repo_path: str) -> Optional[str]:
         return None
 
 
+def _normalize_issue(issue: dict) -> dict:
+    data = dict(issue)
+    if "defect_family" not in data:
+        data["defect_family"] = data.get("category") or data.get("issue_type") or "unknown"
+    if "rule_id" not in data:
+        data["rule_id"] = data.get("issue_type") or "unknown"
+    if "severity" not in data:
+        data["severity"] = "medium"
+    if "message" not in data:
+        data["message"] = "Issue detected"
+    if "line_number" not in data:
+        data["line_number"] = 0
+    if "engine_source" not in data:
+        data["engine_source"] = "unknown"
+    data.setdefault("fix_hint", None)
+    data.setdefault("cwe_id", None)
+    data.setdefault("owasp_ref", None)
+    data.setdefault("code_snippet", "")
+    return data
+
+
 # ─── Endpoints ───────────────────────────────────────────────
 
 @router.post("/analyze/github", response_model=AnalyzeResponse)
@@ -467,18 +489,21 @@ async def get_results(
     issues = record.get_issues()
     ai_summary = record.get_ai_summary()
 
+    normalized_issues = [_normalize_issue(i) for i in issues]
+
     return AnalysisResultResponse(
         id=record.id,
         project_id=record.project_id,
         repo_url=record.repo_url,
         repo_name=record.repo_name,
+        clone_path=record.clone_path,
         status=record.status,
         health_score=record.health_score,
         total_issues=record.total_issues,
         file_count=record.file_count,
         total_lines=record.total_lines,
         languages=record.get_languages(),
-        issues=[IssueDetail(**i) for i in issues],
+        issues=[IssueDetail(**i) for i in normalized_issues],
         file_tree=record.get_file_tree(),
         ollama_findings=[],
         ai_summary=ai_summary,
@@ -564,14 +589,15 @@ async def get_file_content(
 
     # Repo may have been cleaned up after analysis — check if path is still accessible
     import os
-    if not record.repo_path or not os.path.exists(record.repo_path):
+    repo_path = record.clone_path or record.repo_path
+    if not repo_path or not os.path.exists(repo_path):
         raise HTTPException(
             status_code=410,
             detail="Repository files have been cleaned up after analysis. File content is no longer available.",
         )
 
     try:
-        content = git_service.get_file_content(record.repo_path, file_path)
+        content = git_service.get_file_content(repo_path, file_path)
         language = git_service.detect_language(file_path.split("/")[-1])
 
         return {
@@ -608,14 +634,15 @@ async def update_file_content(
         raise HTTPException(status_code=404, detail="Analysis not found")
 
     import os
-    if not record.repo_path or not os.path.exists(record.repo_path):
+    repo_path = record.clone_path or record.repo_path
+    if not repo_path or not os.path.exists(repo_path):
         raise HTTPException(
             status_code=410,
             detail="Repository files have been cleaned up. Cannot save edits.",
         )
 
     try:
-        git_service.put_file_content(record.repo_path, req.file_path, req.content)
+        git_service.put_file_content(repo_path, req.file_path, req.content)
         return {"message": "File updated successfully"}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"File not found: {req.file_path}")

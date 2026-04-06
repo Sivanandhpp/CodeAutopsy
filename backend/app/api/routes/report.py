@@ -36,6 +36,7 @@ router = APIRouter(prefix="/api/report", tags=["Report"])
 C_PRIMARY = colors.HexColor('#6366f1')
 C_ACCENT = colors.HexColor('#06b6d4')
 C_SUCCESS = colors.HexColor('#10b981')
+C_BLOCKER = colors.HexColor('#7f1d1d')
 C_CRITICAL = colors.HexColor('#ef4444')
 C_HIGH = colors.HexColor('#f97316')
 C_MEDIUM = colors.HexColor('#eab308')
@@ -47,8 +48,13 @@ C_TEXT_SEC = colors.HexColor('#64748b')
 C_TEXT_MUT = colors.HexColor('#94a3b8')
 
 SEV_COLOR = {
-    'critical': C_CRITICAL, 'high': C_HIGH,
-    'medium': C_MEDIUM, 'low': C_LOW, 'info': C_TEXT_MUT,
+    'blocker': C_BLOCKER,
+    'critical': C_CRITICAL,
+    'high': C_HIGH,
+    'medium': C_MEDIUM,
+    'low': C_LOW,
+    'info': C_TEXT_MUT,
+    'trace': C_TEXT_MUT,
 }
 
 
@@ -168,7 +174,15 @@ async def export_json(
         raise HTTPException(status_code=400, detail="Analysis is not yet complete")
 
     issues = analysis.get_issues()
-    sev_summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    sev_summary = {
+        "blocker": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "info": 0,
+        "trace": 0,
+    }
     for i in issues:
         s = i.get("severity", "info")
         sev_summary[s] = sev_summary.get(s, 0) + 1
@@ -228,7 +242,15 @@ async def export_pdf(
         raise HTTPException(status_code=400, detail="Analysis is not yet complete")
 
     issues = analysis.get_issues()
-    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    severity_order = {
+        "blocker": 0,
+        "critical": 1,
+        "high": 2,
+        "medium": 3,
+        "low": 4,
+        "info": 5,
+        "trace": 6,
+    }
     issues.sort(key=lambda x: severity_order.get(x.get("severity", "info"), 99))
 
     repo_name = analysis.repo_url.split('github.com/')[-1].strip('/')
@@ -239,7 +261,15 @@ async def export_pdf(
     else:
         date_str = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
 
-    sev_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    sev_counts = {
+        "blocker": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "info": 0,
+        "trace": 0,
+    }
     for i in issues:
         s = i.get("severity", "info")
         sev_counts[s] = sev_counts.get(s, 0) + 1
@@ -283,7 +313,9 @@ async def export_pdf(
         ('FONTSIZE', (0, 1), (-1, 1), 16),
         ('TEXTCOLOR', (0, 1), (0, 1), score_color),
         ('TEXTCOLOR', (1, 1), (1, 1), score_color),
-        ('TEXTCOLOR', (2, 1), (2, 1), C_CRITICAL if sev_counts.get('critical', 0) > 0 else C_SUCCESS),
+        ('TEXTCOLOR', (2, 1), (2, 1),
+         C_BLOCKER if sev_counts.get('blocker', 0) > 0
+         else (C_CRITICAL if sev_counts.get('critical', 0) > 0 else C_SUCCESS)),
         ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor('#374151')),
         ('TEXTCOLOR', (4, 1), (4, 1), colors.HexColor('#374151')),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
@@ -296,24 +328,16 @@ async def export_pdf(
 
     # Severity Breakdown
     elems.append(Paragraph("Issue Breakdown by Severity", S['section']))
+    sev_order = ["blocker", "critical", "high", "medium", "low", "info", "trace"]
     sev_rows = []
     total_issues_count = max(len(issues), 1)
-    for sev in ['critical', 'high', 'medium', 'low', 'info']:
+    for sev in sev_order:
         count = sev_counts.get(sev, 0)
         pct = int((count / total_issues_count) * 100)
         sev_rows.append([sev.upper(), str(count), f'{pct}%'])
 
     sev_header = [['Severity', 'Count', 'Proportion']]
     sev_table = Table(sev_header + sev_rows, colWidths=[1.5*inch, 1*inch, 1*inch], hAlign='LEFT')
-    sev_bg_map = {
-        0: colors.HexColor('#fef2f2'), 1: colors.HexColor('#fff7ed'),
-        2: colors.HexColor('#fefce8'), 3: colors.HexColor('#eff6ff'),
-        4: colors.HexColor('#f8fafc'),
-    }
-    sev_text_colors = {
-        0: C_CRITICAL, 1: C_HIGH,
-        2: colors.HexColor('#a16207'), 3: C_LOW, 4: C_TEXT_MUT,
-    }
     style_cmds = [
         ('BACKGROUND', (0, 0), (-1, 0), C_HEADER_BG),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#a5b4fc')),
@@ -326,10 +350,10 @@ async def export_pdf(
         ('TOPPADDING', (0, 0), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]
-    for row_i in range(5):
+    for row_i, sev in enumerate(sev_order):
         r = row_i + 1
-        style_cmds.append(('BACKGROUND', (0, r), (-1, r), sev_bg_map[row_i]))
-        style_cmds.append(('TEXTCOLOR', (0, r), (0, r), sev_text_colors[row_i]))
+        style_cmds.append(('BACKGROUND', (0, r), (-1, r), C_LIGHT_BG if row_i % 2 == 0 else colors.white))
+        style_cmds.append(('TEXTCOLOR', (0, r), (0, r), SEV_COLOR.get(sev, C_TEXT_MUT)))
     sev_table.setStyle(TableStyle(style_cmds))
     elems.append(sev_table)
     elems.append(Spacer(1, 24))
@@ -341,7 +365,7 @@ async def export_pdf(
             "<font color='#10b981'>✓ No issues found. Excellent work!</font>", S['body']
         ))
     else:
-        issue_header = [['#', 'Severity', 'Type', 'File', 'Line']]
+        issue_header = [['#', 'Severity', 'Family', 'File', 'Line']]
         issue_rows = []
         for idx, issue in enumerate(issues[:100], 1):
             file_name = issue.get('file_path', '')
@@ -349,7 +373,7 @@ async def export_pdf(
             file_display = '/'.join(parts[-2:]) if len(parts) > 1 else file_name
             if len(file_display) > 32:
                 file_display = '…' + file_display[-30:]
-            issue_type = issue.get('issue_type', 'unknown')
+            issue_type = issue.get('defect_family', 'unknown')
             if len(issue_type) > 28:
                 issue_type = issue_type[:26] + '…'
             sev = issue.get('severity', 'info')
@@ -374,7 +398,15 @@ async def export_pdf(
             ('TOPPADDING', (0, 0), (-1, -1), 5),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ]
-        sev_c_map = {'CRITICAL': C_CRITICAL, 'HIGH': C_HIGH, 'MEDIUM': colors.HexColor('#a16207'), 'LOW': C_LOW, 'INFO': C_TEXT_MUT}
+        sev_c_map = {
+            'BLOCKER': C_BLOCKER,
+            'CRITICAL': C_CRITICAL,
+            'HIGH': C_HIGH,
+            'MEDIUM': colors.HexColor('#a16207'),
+            'LOW': C_LOW,
+            'INFO': C_TEXT_MUT,
+            'TRACE': C_TEXT_MUT,
+        }
         for row_i, issue in enumerate(issues[:100], 1):
             sev = issue.get('severity', 'info').upper()
             if row_i % 2 == 0:

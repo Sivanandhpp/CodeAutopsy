@@ -126,7 +126,7 @@ export default function EditorPage() {
     setArchaeologyTarget({
       filePath: issue.file_path,
       lineNumber: issue.line_number,
-      issueType: issue.issue_type,
+      defectFamily: issue.defect_family,
     });
   }, []);
 
@@ -276,7 +276,7 @@ export default function EditorPage() {
           analysisId={analysisId}
           filePath={archaeologyTarget.filePath}
           lineNumber={archaeologyTarget.lineNumber}
-          issueType={archaeologyTarget.issueType}
+          defectFamily={archaeologyTarget.defectFamily}
           onClose={() => setArchaeologyTarget(null)}
         />
       )}

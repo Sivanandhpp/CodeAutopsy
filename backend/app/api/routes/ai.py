@@ -69,7 +69,7 @@ async def ai_analyze(
     gateway = get_ai_gateway()
     result = await gateway.generate_fix(
         code_snippet=req.code_snippet,
-        issue_type=req.issue_type,
+        defect_family=req.defect_family,
         language=req.language,
         file_path=req.file_path,
         line_number=req.line_number,

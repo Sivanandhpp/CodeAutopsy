@@ -62,7 +62,7 @@ RULES
 
 def build_fix_user_prompt(
     code_snippet: str,
-    issue_type: str,
+    defect_family: str,
     language: str,
     file_path: Optional[str] = None,
     context_before: str = "",
@@ -70,7 +70,7 @@ def build_fix_user_prompt(
 ) -> str:
     """Build the user message for an issue-fix request."""
     sections = [
-        f"**Issue Type:** {issue_type}",
+        f"**Defect Family:** {defect_family}",
         f"**Language:** {language}",
     ]
 
@@ -94,7 +94,7 @@ def build_fix_user_prompt(
 
 def build_fix_messages(
     code_snippet: str,
-    issue_type: str,
+    defect_family: str,
     language: str,
     file_path: Optional[str] = None,
     context_before: str = "",
@@ -106,7 +106,7 @@ def build_fix_messages(
         {
             "role": "user",
             "content": build_fix_user_prompt(
-                code_snippet, issue_type, language,
+                code_snippet, defect_family, language,
                 file_path, context_before, context_after,
             ),
         },
@@ -152,11 +152,13 @@ SCAN DATA:
 # ─── Helpers for building the summary payload ────────────────
 
 SEVERITY_ORDER = {
-    "critical": 0,
-    "high": 1,
-    "medium": 2,
-    "low": 3,
-    "info": 4,
+    "blocker": 0,
+    "critical": 1,
+    "high": 2,
+    "medium": 3,
+    "low": 4,
+    "info": 5,
+    "trace": 6,
 }
 MAX_REPRESENTATIVE_ISSUES = 18
 MAX_TOP_TYPES = 8
@@ -180,13 +182,13 @@ def _representative_issues(issues: list[dict]) -> list[dict]:
         issues,
         key=lambda i: (
             SEVERITY_ORDER.get(i.get("severity", "info"), 4),
-            str(i.get("issue_type", "")),
+            str(i.get("defect_family", "")),
             str(i.get("file_path", "")),
             int(i.get("line_number", 0) or 0),
         ),
     ):
         dedup_key = (
-            str(issue.get("issue_type", "")),
+            str(issue.get("defect_family", "")),
             str(issue.get("file_path", "")),
             int(issue.get("line_number", 0) or 0),
             str(issue.get("message", "")),
@@ -198,7 +200,8 @@ def _representative_issues(issues: list[dict]) -> list[dict]:
             "file": issue.get("file_path", ""),
             "line": int(issue.get("line_number", 0) or 0),
             "severity": issue.get("severity", "low"),
-            "type": issue.get("issue_type", "unknown"),
+            "family": issue.get("defect_family", "unknown"),
+            "rule_id": issue.get("rule_id", ""),
             "message": str(issue.get("message", ""))[:180],
         })
         if len(sampled) >= MAX_REPRESENTATIVE_ISSUES:
@@ -212,7 +215,9 @@ def build_summary_prompt(issues: list[dict]) -> str:
     Returns a single string (not a message list) because Ollama's
     ``/api/generate`` endpoint takes a flat ``prompt`` field.
     """
-    severity_counts = {s: 0 for s in ("critical", "high", "medium", "low", "info")}
+    severity_counts = {s: 0 for s in (
+        "blocker", "critical", "high", "medium", "low", "info", "trace"
+    )}
     for issue in issues:
         sev = str(issue.get("severity", "info")).lower()
         if sev in severity_counts:
@@ -221,8 +226,8 @@ def build_summary_prompt(issues: list[dict]) -> str:
     payload = {
         "total_issues": len(issues),
         "severity_counts": severity_counts,
-        "top_issue_types": _top_counts(issues, "issue_type", MAX_TOP_TYPES),
-        "top_categories": _top_counts(issues, "category", 6),
+        "top_defect_families": _top_counts(issues, "defect_family", MAX_TOP_TYPES),
+        "top_rule_ids": _top_counts(issues, "rule_id", MAX_TOP_TYPES),
         "representative_issues": _representative_issues(issues),
     }
 

@@ -29,9 +29,10 @@ async def _get_repo_path(analysis_id: str, db: AsyncSession) -> str:
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Analysis not found")
-    if not record.repo_path:
+    repo_path = record.clone_path or record.repo_path
+    if not repo_path:
         raise HTTPException(status_code=400, detail="Repository data not available")
-    return record.repo_path
+    return repo_path
 
 
 # ─── Blame ───────────────────────────────────────────────────

@@ -5,12 +5,12 @@ Handles GitHub repository cloning, file tree extraction, and language detection.
 
 import os
 import re
-import uuid
 import shutil
 from pathlib import Path
 
 from git import Repo, GitCommandError
 from app.utils.languages import LANGUAGE_MAP
+from app.services.repo_storage_service import RepoStorageService
 
 # Directories to skip during file tree scanning
 SKIP_DIRS = {
@@ -37,16 +37,6 @@ SKIP_EXTENSIONS = {
 class GitService:
     """Service for cloning GitHub repos and extracting file metadata."""
     
-    def __init__(self, repos_dir: str = None):
-        if repos_dir:
-            self.repos_dir = repos_dir
-        else:
-            self.repos_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "data", "repos"
-            )
-        os.makedirs(self.repos_dir, exist_ok=True)
-    
     def validate_github_url(self, url: str) -> tuple[bool, str]:
         """Validate that the URL is a valid GitHub repository URL."""
         url = url.strip().rstrip('/')
@@ -63,9 +53,9 @@ class GitService:
             return f"{parts[-2]}/{parts[-1]}"
         return parts[-1]
     
-    def clone_repository(self, repo_url: str) -> tuple[str, str]:
+    def clone_repository(self, repo_url: str, analysis_id: str) -> tuple[str, str]:
         """
-        Clone a GitHub repository to a temporary directory.
+        Clone a GitHub repository to a persistent storage path.
         Returns (repo_path, repo_name).
         Raises GitCommandError on failure.
         """
@@ -74,23 +64,20 @@ class GitService:
             raise ValueError(result)
         
         repo_name = self.extract_repo_name(repo_url)
-        repo_id = str(uuid.uuid4())[:8]
-        repo_path = os.path.join(self.repos_dir, f"{repo_name.replace('/', '_')}_{repo_id}")
-        
-        os.makedirs(repo_path, exist_ok=True)
+        repo_path = RepoStorageService.get_clone_path(repo_name, analysis_id)
         
         try:
             # Clone with limited depth for speed, but enough for archaeology
             Repo.clone_from(
                 repo_url,
-                repo_path,
+                str(repo_path),
                 depth=200,  # Enough commits for archaeology
                 no_single_branch=True,
             )
-            return repo_path, repo_name
+            return str(repo_path), repo_name
         except GitCommandError as e:
             # Cleanup on failure
-            if os.path.exists(repo_path):
+            if repo_path and os.path.exists(repo_path):
                 shutil.rmtree(repo_path, ignore_errors=True)
             raise RuntimeError(f"Failed to clone repository: {str(e)}")
     

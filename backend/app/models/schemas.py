@@ -7,7 +7,7 @@ Covers: Auth, Users, Projects, Analysis, Archaeology, AI, Reports.
 
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, EmailStr
@@ -106,6 +106,7 @@ class UserResponse(BaseModel):
     id: UUID
     username: str
     email: str
+    is_admin: bool = False
     created_at: Optional[datetime] = None
 
     class Config:
@@ -215,12 +216,15 @@ class IssueDetail(BaseModel):
     line_number: int
     end_line: Optional[int] = None
     column: Optional[int] = None
-    issue_type: str
-    severity: str  # critical, high, medium, low
+    rule_id: str
+    defect_family: str
+    severity: str  # trace, info, low, medium, high, critical, blocker
     message: str
+    fix_hint: Optional[str] = None
+    cwe_id: Optional[str] = None
+    owasp_ref: Optional[str] = None
     code_snippet: str = ""
-    rule_id: Optional[str] = None
-    category: Optional[str] = None
+    engine_source: Optional[str] = None
 
 
 class OllamaFinding(BaseModel):
@@ -250,6 +254,7 @@ class AnalysisResultResponse(BaseModel):
     project_id: Optional[UUID] = None
     repo_url: str
     repo_name: Optional[str] = None
+    clone_path: Optional[str] = None
     status: str
     health_score: Optional[int] = None
     total_issues: int = 0
@@ -263,6 +268,77 @@ class AnalysisResultResponse(BaseModel):
     error_message: Optional[str] = None
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ═════════════════════════════════════════════════════════════
+# RULES SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
+
+SeverityTier = Literal[
+    "trace", "info", "low", "medium", "high", "critical", "blocker"
+]
+
+DefectFamily = Literal[
+    "injection",
+    "auth",
+    "crypto",
+    "secrets",
+    "xss",
+    "path_traversal",
+    "deserialization",
+    "ssrf",
+    "reliability",
+    "maintainability",
+    "best_practice",
+    "supply_chain",
+]
+
+MatchType = Literal["regex_line", "regex_multiline", "ast_semgrep"]
+
+
+class RuleBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    language: str = "any"
+    defect_family: DefectFamily
+    severity: SeverityTier
+    pattern: str
+    match_type: MatchType
+    message: str
+    fix_hint: Optional[str] = None
+    cwe_id: Optional[str] = None
+    owasp_ref: Optional[str] = None
+    is_active: bool = True
+
+
+class RuleCreate(RuleBase):
+    rule_id: str
+
+
+class RuleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    language: Optional[str] = None
+    defect_family: Optional[DefectFamily] = None
+    severity: Optional[SeverityTier] = None
+    pattern: Optional[str] = None
+    match_type: Optional[MatchType] = None
+    message: Optional[str] = None
+    fix_hint: Optional[str] = None
+    cwe_id: Optional[str] = None
+    owasp_ref: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class RuleResponse(RuleBase):
+    id: UUID
+    rule_id: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -347,7 +423,7 @@ class BlameResponse(BaseModel):
 
 class AIAnalyzeRequest(BaseModel):
     code_snippet: str
-    issue_type: str
+    defect_family: str
     language: str = "python"
     file_path: Optional[str] = None
     line_number: Optional[int] = None

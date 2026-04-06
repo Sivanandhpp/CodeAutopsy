@@ -113,18 +113,8 @@ async def get_standalone_session() -> AsyncGenerator[AsyncSession, None]:
 
 # ─── Table Creation (Startup) ────────────────────────────────
 async def create_tables() -> None:
-    """Create all database tables. Called once during application startup."""
-    # Import all models so they are registered with Base.metadata
-    import app.models.user       # noqa: F401
-    import app.models.project    # noqa: F401
-    import app.models.otp        # noqa: F401
-    import app.models.analysis   # noqa: F401
-
-    engine = get_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    logger.info("✅ Database tables created/verified successfully")
+    """Deprecated: schema is managed by Alembic migrations."""
+    logger.info("Skipping create_all; run Alembic migrations to manage schema.")
 
 
 async def dispose_engine() -> None:

@@ -21,7 +21,15 @@ import AIPanel from './AIPanel';
 import Navbar from '../ui/Navbar';
 void motion;
 
-const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+const SEVERITY_ORDER = {
+  blocker: 0,
+  critical: 1,
+  high: 2,
+  medium: 3,
+  low: 4,
+  info: 5,
+  trace: 6,
+};
 
 export default function ResultsDashboard({ analysisId, errorBanner }) {
   const { 
@@ -107,7 +115,8 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
       filtered = filtered.filter(i => 
         i.file_path.toLowerCase().includes(q) ||
         i.message.toLowerCase().includes(q) ||
-        i.issue_type.toLowerCase().includes(q)
+        (i.defect_family || '').toLowerCase().includes(q) ||
+        (i.rule_id || '').toLowerCase().includes(q)
       );
     }
     return filtered;
@@ -115,7 +124,15 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
   
   // Severity counts
   const severityCounts = useMemo(() => {
-    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    const counts = {
+      blocker: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+      trace: 0,
+    };
     (issues || []).forEach(i => {
       if (counts[i.severity] !== undefined) counts[i.severity]++;
     });
@@ -142,10 +159,13 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
   // Severity icon
   const SeverityIcon = ({ severity }) => {
     const icons = {
+      blocker: <Zap size={14} />,
       critical: <AlertCircle size={14} />,
       high: <AlertTriangle size={14} />,
-      medium: <Info size={14} />,
+      medium: <AlertTriangle size={14} />,
       low: <CheckCircle2 size={14} />,
+      info: <Info size={14} />,
+      trace: <Eye size={14} />,
     };
     return icons[severity] || <Info size={14} />;
   };
@@ -487,7 +507,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
               </div>
               
               <div className="filter-severity">
-                {['all', 'critical', 'high', 'medium', 'low'].map(sev => (
+                {['all', 'blocker', 'critical', 'high', 'medium', 'low', 'info', 'trace'].map(sev => (
                   <button
                     key={sev}
                     className={`filter-btn ${severityFilter === sev ? 'active' : ''} ${sev !== 'all' ? `filter-${sev}` : ''}`}
@@ -538,7 +558,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
                                   <SeverityIcon severity={issue.severity} />
                                   {issue.severity}
                                 </span>
-                                <span className="issue-type">{issue.issue_type}</span>
+                                <span className="issue-type">{issue.defect_family || 'unknown'}</span>
                                 <span className="issue-line">Line {issue.line_number}</span>
                               </div>
                               <p className="issue-message">{issue.message}</p>
@@ -551,7 +571,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
                                   onClick={() => setArchaeologyTarget({
                                     filePath: issue.file_path,
                                     lineNumber: issue.line_number,
-                                    issueType: issue.issue_type,
+                                    defectFamily: issue.defect_family || 'unknown',
                                   })}
                                 >
                                   <Microscope size={13} />
@@ -591,7 +611,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
           analysisId={analysisId}
           filePath={archaeologyTarget.filePath}
           lineNumber={archaeologyTarget.lineNumber}
-          issueType={archaeologyTarget.issueType}
+          defectFamily={archaeologyTarget.defectFamily}
           onClose={() => setArchaeologyTarget(null)}
         />
       )}
@@ -890,10 +910,13 @@ const dashboardStyles = `
   
   .filter-btn:hover { border-color: var(--ca-primary); }
   .filter-btn.active { background: var(--ca-primary); color: white; border-color: var(--ca-primary); }
+  .filter-btn.filter-blocker.active { background: var(--ca-blocker); border-color: var(--ca-blocker); }
   .filter-btn.filter-critical.active { background: var(--ca-critical); border-color: var(--ca-critical); }
   .filter-btn.filter-high.active { background: var(--ca-high); border-color: var(--ca-high); }
   .filter-btn.filter-medium.active { background: var(--ca-medium); border-color: var(--ca-medium); color: #000; }
   .filter-btn.filter-low.active { background: var(--ca-low); border-color: var(--ca-low); }
+  .filter-btn.filter-info.active { background: var(--ca-info); border-color: var(--ca-info); }
+  .filter-btn.filter-trace.active { background: var(--ca-trace); border-color: var(--ca-trace); }
   
   /* ─── Issues List ─────────────────────── */
   

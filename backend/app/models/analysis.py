@@ -44,7 +44,8 @@ class AnalysisResult(Base):
     ai_summary = Column(Text, nullable=True)      # Live summary of static issues
     error_message = Column(String(2000), nullable=True)
     commit_sha = Column(String(64), nullable=True)  # HEAD SHA at analysis time
-    repo_path = Column(String(500), nullable=True)   # Cloned repo path
+    repo_path = Column(String(500), nullable=True)   # Legacy clone path
+    clone_path = Column(String(500), nullable=True)  # Canonical clone path
 
     created_at = Column(
         DateTime(timezone=True),

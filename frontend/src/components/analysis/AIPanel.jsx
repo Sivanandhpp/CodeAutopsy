@@ -30,7 +30,7 @@ export default function AIPanel({ issue, onClose }) {
     try {
       const data = await analyzeWithAI(
         issue.code_snippet || '',
-        issue.issue_type || 'unknown',
+        issue.defect_family || 'unknown',
         issue.language || detectLang(issue.file_path),
       );
       setResult(data);
@@ -91,7 +91,7 @@ export default function AIPanel({ issue, onClose }) {
               <div>
                 <h2>AI Analysis</h2>
                 <span className="ai-subtitle">
-                  {issue.issue_type} · {issue.file_path?.split('/').pop() || 'file'}
+                  {(issue.defect_family || 'unknown')} · {issue.file_path?.split('/').pop() || 'file'}
                   {issue.line_number ? ` · Line ${issue.line_number}` : ''}
                 </span>
               </div>

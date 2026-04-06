@@ -1,17 +1,15 @@
 ﻿"""
 Static Analyzer Service
-Wraps Semgrep for security vulnerability detection and provides
-a fallback regex-based scanner when Semgrep is not available.
+Runs DB-driven static analysis using pluggable engines.
 """
 
-import json
-import subprocess
-import os
-import re
-import uuid
 import hashlib
 import logging
-from pathlib import Path
+
+from sqlalchemy import select
+
+from app.models.analysis_rule import AnalysisRule
+from app.services.analysis_engines import EngineRegistry, RegexEngine, SemgrepEngine
 
 logger = logging.getLogger(__name__)
 
@@ -19,22 +17,28 @@ logger = logging.getLogger(__name__)
 # â”€â”€â”€ Severity Scoring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 SEVERITY_WEIGHTS = {
-    'critical': 15,
-    'high': 10,
-    'medium': 5,
-    'low': 2,
+    'trace': 0,
     'info': 1,
+    'low': 2,
+    'medium': 5,
+    'high': 10,
+    'critical': 15,
+    'blocker': 25,
 }
 
-# High-impact issue types get extra penalty
-HIGH_IMPACT_TYPES = {
-    'sql-injection', 'xss', 'command-injection', 'path-traversal',
-    'ssrf', 'insecure-deserialization', 'remote-code-execution',
+# High-impact defect families get extra penalty
+HIGH_IMPACT_FAMILIES = {
+    'injection', 'path_traversal', 'deserialization', 'ssrf',
+}
+
+SCANNABLE_LANGUAGES = {
+    'python', 'javascript', 'typescript', 'java', 'go', 'ruby', 'php',
+    'c', 'c++', 'c#', 'rust', 'kotlin', 'swift', 'shell',
 }
 
 
-# â”€â”€â”€ Fallback Regex Patterns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Used when Semgrep is not installed â€” expanded to 50+ rules
+# --- Legacy Regex Patterns (migrated to DB) ---
+# Kept for seed script compatibility until migration is verified.
 
 REGEX_RULES = [
     # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -588,225 +592,101 @@ REGEX_RULES = [
 
 
 class StaticAnalyzer:
-    """Runs static analysis using Semgrep or fallback regex patterns."""
-    
+    """Runs static analysis using registered analysis engines."""
+
     def __init__(self):
-        self._semgrep_available = None
-    
-    def is_semgrep_available(self) -> bool:
-        """Check if Semgrep CLI is installed."""
-        if self._semgrep_available is None:
-            try:
-                result = subprocess.run(
-                    ['semgrep', '--version'],
-                    capture_output=True, text=True, timeout=10
-                )
-                self._semgrep_available = result.returncode == 0
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                self._semgrep_available = False
-        return self._semgrep_available
-    
-    def run_analysis(self, repo_path: str, file_tree: list[dict] = None) -> list[dict]:
-        """
-        Run static analysis on a repository.
-        Uses Semgrep if available, otherwise falls back to regex patterns.
-        """
-        if self.is_semgrep_available():
-            issues = self._run_semgrep(repo_path)
-        else:
-            logger.warning("Semgrep not installed; using fallback regex scanner")
-            issues = self._run_regex_scanner(repo_path, file_tree)
-        
-        # Assign unique IDs to issues
-        for i, issue in enumerate(issues):
-            if 'id' not in issue or not issue['id']:
-                fp = issue.get("file_path", "")
-                ln = issue.get("line_number", 0)
-                hash_str = hashlib.md5(f"{fp}{ln}".encode()).hexdigest()[:8]
-                issue['id'] = f"issue_{i}_{hash_str}"
-        
+        pass
+
+    async def run_analysis(
+        self,
+        repo_path: str,
+        db,
+        file_tree: list[dict] | None = None,
+    ) -> list[dict]:
+        """Run static analysis on a repository using DB-driven rules."""
+        regex_rules, semgrep_rules = await self._load_rules(db)
+
+        registry = EngineRegistry()
+        registry.register(RegexEngine(repo_path, regex_rules))
+        registry.register(SemgrepEngine(repo_path, semgrep_rules))
+
+        issues: list[dict] = []
+        files_to_scan = self._get_files_to_scan(repo_path, file_tree)
+        for rel_path, language in files_to_scan:
+            findings = await registry.run_all(rel_path, language)
+            for finding in findings:
+                data = finding.model_dump()
+                data.setdefault("issue_type", data.get("rule_id", ""))
+                data["category"] = data.get("defect_family")
+                issues.append(data)
+
+        self._assign_ids(issues)
         return issues
-    
-    def _run_semgrep(self, repo_path: str) -> list[dict]:
-        """Run Semgrep with focused security rulesets for speed."""
-        try:
-            result = subprocess.run(
-                [
-                    'semgrep', 'scan',
-                    '--config=p/security-audit',
-                    '--config=p/secrets',
-                    '--json',
-                    '--timeout=30',
-                    '--timeout-threshold=3',  # Skip files that time out
-                    '--max-target-bytes=500000',
-                    '--exclude=node_modules',
-                    '--exclude=vendor',
-                    '--exclude=dist',
-                    '--exclude=build',
-                    '--exclude=.git',
-                    '--exclude=__pycache__',
-                    '--exclude=*.min.js',
-                    '--exclude=*.min.css',
-                    '--exclude=*.lock',
-                    '--exclude=*.map',
-                    repo_path,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120,  # 2 minute timeout (down from 10m)
-                cwd=repo_path,
+
+    async def _load_rules(self, db) -> tuple[list[dict], dict[str, dict]]:
+        """Load active rules from the database once per analysis run."""
+        result = await db.execute(
+            select(AnalysisRule).where(
+                AnalysisRule.is_active.is_(True),
+                AnalysisRule.match_type.in_(
+                    ("regex_line", "regex_multiline", "ast_semgrep")
+                ),
             )
-            
-            if result.stdout:
-                return self._parse_semgrep_results(result.stdout, repo_path)
-            return []
-            
-        except subprocess.TimeoutExpired:
-            logger.warning("Semgrep analysis timed out")
-            return []
-        except Exception as e:
-            logger.warning("Semgrep error: %s", e)
-            return []
-    
-    def _parse_semgrep_results(self, json_output: str, repo_path: str) -> list[dict]:
-        """Parse Semgrep JSON output into our issue format."""
-        try:
-            data = json.loads(json_output)
-        except json.JSONDecodeError:
-            return []
-        
-        issues = []
-        results = data.get('results', [])
-        
-        for result in results:
-            # Get relative file path
-            file_path = result.get('path', '')
-            if file_path.startswith(repo_path):
-                file_path = os.path.relpath(file_path, repo_path)
-            file_path = file_path.replace('\\', '/')
-            
-            # Map Semgrep severity to our severity levels
-            semgrep_severity = result.get('extra', {}).get('severity', 'WARNING')
-            severity = self._map_semgrep_severity(semgrep_severity)
-            
-            # Get code snippet
-            lines = result.get('extra', {}).get('lines', '')
-            
-            # Extract issue type from rule ID
-            rule_id = result.get('check_id', 'unknown')
-            issue_type = self._extract_issue_type(rule_id)
-            
-            issues.append({
-                'id': '',  # Will be assigned later
-                'file_path': file_path,
-                'line_number': result.get('start', {}).get('line', 0),
-                'end_line': result.get('end', {}).get('line', 0),
-                'column': result.get('start', {}).get('col', 0),
-                'issue_type': issue_type,
-                'severity': severity,
-                'message': result.get('extra', {}).get('message', 'Issue detected'),
-                'code_snippet': lines,
-                'rule_id': rule_id,
-                'category': result.get('extra', {}).get('metadata', {}).get('category', 'security'),
-            })
-        
-        return issues
-    
-    def _map_semgrep_severity(self, severity: str) -> str:
-        """Map Semgrep severity to our severity levels."""
-        mapping = {
-            'ERROR': 'high',
-            'WARNING': 'medium',
-            'INFO': 'low',
+        )
+        rules = result.scalars().all()
+
+        regex_rules: list[dict] = []
+        semgrep_rules: dict[str, dict] = {}
+        for rule in rules:
+            rule_dict = self._rule_to_dict(rule)
+            if rule.match_type in ("regex_line", "regex_multiline"):
+                regex_rules.append(rule_dict)
+            elif rule.match_type == "ast_semgrep":
+                semgrep_rules[rule.rule_id] = rule_dict
+        return regex_rules, semgrep_rules
+
+    @staticmethod
+    def _rule_to_dict(rule: AnalysisRule) -> dict:
+        return {
+            "rule_id": rule.rule_id,
+            "name": rule.name,
+            "description": rule.description,
+            "language": rule.language,
+            "defect_family": rule.defect_family,
+            "severity": rule.severity,
+            "pattern": rule.pattern,
+            "match_type": rule.match_type,
+            "message": rule.message,
+            "fix_hint": rule.fix_hint,
+            "cwe_id": rule.cwe_id,
+            "owasp_ref": rule.owasp_ref,
         }
-        return mapping.get(severity.upper(), 'medium')
-    
-    def _extract_issue_type(self, rule_id: str) -> str:
-        """Extract a human-readable issue type from rule ID."""
-        # Common patterns in Semgrep rule IDs
-        type_keywords = {
-            'sql': 'sql-injection',
-            'xss': 'xss',
-            'injection': 'injection',
-            'hardcoded': 'hardcoded-secret',
-            'eval': 'code-injection',
-            'exec': 'code-injection',
-            'crypto': 'weak-crypto',
-            'hash': 'weak-crypto',
-            'deserialization': 'insecure-deserialization',
-            'cors': 'cors-misconfiguration',
-            'redirect': 'open-redirect',
-            'path': 'path-traversal',
-            'ssrf': 'ssrf',
-            'csrf': 'csrf',
-            'jwt': 'jwt-vulnerability',
-        }
-        
-        rule_lower = rule_id.lower()
-        for keyword, issue_type in type_keywords.items():
-            if keyword in rule_lower:
-                return issue_type
-        
-        # Extract last part of rule ID as type
-        parts = rule_id.split('.')
-        if parts:
-            return parts[-1].replace('-', ' ').replace('_', '-')
-        return 'security-issue'
-    
-    def _run_regex_scanner(self, repo_path: str, file_tree: list[dict] = None) -> list[dict]:
-        """Fallback regex-based scanner when Semgrep isn't available."""
-        issues = []
-        
-        # Determine which files to scan
-        if file_tree:
-            files_to_scan = [
-                (os.path.join(repo_path, f['path']), f['language'], f['path'])
-                for f in file_tree
-                if f['language'] in (
-                    'python', 'javascript', 'typescript', 'java',
-                    'go', 'ruby', 'php', 'c', 'c++', 'c#',
-                    'rust', 'kotlin', 'swift', 'shell',
-                )
-            ]
-        else:
-            files_to_scan = self._find_source_files(repo_path)
-        
-        for full_path, language, rel_path in files_to_scan:
-            try:
-                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                    lines = content.split('\n')
-            except Exception:
+
+    @staticmethod
+    def _assign_ids(issues: list[dict]) -> None:
+        for i, issue in enumerate(issues):
+            if issue.get("id"):
                 continue
-            
-            for rule in REGEX_RULES:
-                if language not in rule['languages']:
-                    continue
-                
-                for line_num, line in enumerate(lines, 1):
-                    if re.search(rule['pattern'], line):
-                        # Get surrounding code for snippet
-                        start = max(0, line_num - 2)
-                        end = min(len(lines), line_num + 2)
-                        snippet = '\n'.join(lines[start:end])
-                        
-                        issues.append({
-                            'id': '',
-                            'file_path': rel_path,
-                            'line_number': line_num,
-                            'end_line': line_num,
-                            'column': 1,
-                            'issue_type': rule['id'],
-                            'severity': rule['severity'],
-                            'message': rule['message'],
-                            'code_snippet': snippet,
-                            'rule_id': f"regex.{rule['id']}",
-                            'category': rule['category'],
-                        })
-        
-        return issues
-    
-    def _find_source_files(self, repo_path: str) -> list[tuple]:
+            fp = issue.get("file_path", "")
+            ln = issue.get("line_number", 0)
+            rule_id = issue.get("rule_id", "")
+            hash_str = hashlib.md5(f"{fp}{ln}{rule_id}".encode()).hexdigest()[:8]
+            issue["id"] = f"issue_{i}_{hash_str}"
+
+    def _get_files_to_scan(
+        self,
+        repo_path: str,
+        file_tree: list[dict] | None,
+    ) -> list[tuple[str, str]]:
+        if file_tree:
+            return [
+                (f["path"], f["language"])
+                for f in file_tree
+                if f.get("language") in SCANNABLE_LANGUAGES
+            ]
+        return self._find_source_files(repo_path)
+
+    def _find_source_files(self, repo_path: str) -> list[tuple[str, str]]:
         """Find source files using FileFilter for fast, smart selection."""
         from app.services.file_filter import FileFilter
         from app.services.git_service import GitService
@@ -815,14 +695,12 @@ class StaticAnalyzer:
         ff = FileFilter(repo_path)
         user_files = ff.user_authored_files(max_files=100)
 
-        result = []
+        result: list[tuple[str, str]] = []
         for fpath in user_files:
-            rel_path = str(fpath.relative_to(repo_path)).replace('\\', '/')
+            rel_path = str(fpath.relative_to(repo_path)).replace("\\", "/")
             language = gs.detect_language(fpath.name)
-            if language in ('python', 'javascript', 'typescript', 'java',
-                           'go', 'ruby', 'php', 'c', 'c++', 'c#',
-                           'rust', 'kotlin', 'swift', 'shell'):
-                result.append((str(fpath), language, rel_path))
+            if language in SCANNABLE_LANGUAGES:
+                result.append((rel_path, language))
         return result
     
     def calculate_health_score(self, issues: list[dict]) -> int:
@@ -835,12 +713,12 @@ class StaticAnalyzer:
         for issue in issues:
             severity = issue.get('severity', 'medium')
             base_penalty = SEVERITY_WEIGHTS.get(severity, 5)
-            
-            # Extra penalty for high-impact issue types
-            issue_type = issue.get('issue_type', '')
-            if issue_type in HIGH_IMPACT_TYPES:
+
+            # Extra penalty for high-impact defect families
+            defect_family = issue.get('defect_family', '')
+            if defect_family in HIGH_IMPACT_FAMILIES:
                 base_penalty *= 1.5
-            
+
             score -= base_penalty
         
         # Floor at 0, cap at 100
@@ -856,7 +734,15 @@ class StaticAnalyzer:
     
     def get_severity_summary(self, issues: list[dict]) -> dict:
         """Count issues by severity."""
-        summary = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+        summary = {
+            'blocker': 0,
+            'critical': 0,
+            'high': 0,
+            'medium': 0,
+            'low': 0,
+            'info': 0,
+            'trace': 0,
+        }
         for issue in issues:
             severity = issue.get('severity', 'medium')
             if severity in summary:

@@ -6,15 +6,26 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertCircle, AlertTriangle, Info, CheckCircle2,
-  ChevronDown, ChevronUp, Bug, Filter, Microscope
+  ChevronDown, ChevronUp, Bug, Filter, Microscope, Zap
 } from 'lucide-react';
 
-const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+const SEV_ORDER = {
+  blocker: 0,
+  critical: 1,
+  high: 2,
+  medium: 3,
+  low: 4,
+  info: 5,
+  trace: 6,
+};
 const SEV_ICONS = {
+  blocker: <Zap size={14} />,
   critical: <AlertCircle size={14} />,
   high: <AlertTriangle size={14} />,
-  medium: <Info size={14} />,
+  medium: <AlertTriangle size={14} />,
   low: <CheckCircle2 size={14} />,
+  info: <Info size={14} />,
+  trace: <Microscope size={14} />,
 };
 
 export default function ProblemsPanel({
@@ -39,7 +50,15 @@ export default function ProblemsPanel({
   }, [issues, filePath, filter]);
 
   const sevCounts = useMemo(() => {
-    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    const counts = {
+      blocker: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+      trace: 0,
+    };
     issues.filter(i => i.file_path === filePath).forEach(i => {
       if (counts[i.severity] !== undefined) counts[i.severity]++;
     });
@@ -75,7 +94,7 @@ export default function ProblemsPanel({
           {/* Mini filter */}
           {totalFileIssues > 4 && (
             <div className="pp-filters">
-              {['all', 'critical', 'high', 'medium', 'low'].map(sev => (
+              {['all', 'blocker', 'critical', 'high', 'medium', 'low', 'info', 'trace'].map(sev => (
                 <button
                   key={sev}
                   className={`pp-filter-btn ${filter === sev ? 'active' : ''}`}
@@ -98,7 +117,7 @@ export default function ProblemsPanel({
                   {SEV_ICONS[issue.severity]}
                 </span>
                 <span className="pp-message">{issue.message}</span>
-                <span className="pp-type">{issue.issue_type}</span>
+                <span className="pp-type">{issue.defect_family || 'unknown'}</span>
                 <span className="pp-line">Ln {issue.line_number}</span>
                 <button
                   className="pp-trace-btn"
@@ -171,10 +190,13 @@ export default function ProblemsPanel({
           padding: 1px 6px;
           border-radius: 4px;
         }
+        .pp-sev-blocker { color: var(--ca-blocker); }
         .pp-sev-critical { color: var(--ca-critical); }
         .pp-sev-high { color: var(--ca-high); }
         .pp-sev-medium { color: var(--ca-medium); }
         .pp-sev-low { color: #06b6d4; }
+        .pp-sev-info { color: var(--ca-info); }
+        .pp-sev-trace { color: var(--ca-trace); }
         .pp-body { flex: 1; overflow-y: auto; }
         .pp-filters {
           display: flex;

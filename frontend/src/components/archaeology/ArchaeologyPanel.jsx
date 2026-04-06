@@ -19,7 +19,7 @@ export default function ArchaeologyPanel({
   analysisId,
   filePath,
   lineNumber,
-  issueType,
+  defectFamily,
   onClose,
 }) {
   const [loading, setLoading] = useState(true);
@@ -76,7 +76,7 @@ export default function ArchaeologyPanel({
                 <span className="ap-subtitle">
                   <FileCode size={13} />
                   {filePath}:{lineNumber}
-                  {issueType && <span className="ap-issue-tag">{issueType}</span>}
+                  {defectFamily && <span className="ap-issue-tag">{defectFamily}</span>}
                 </span>
               </div>
             </div>

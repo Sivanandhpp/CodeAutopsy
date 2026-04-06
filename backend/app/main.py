@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database import create_tables, dispose_engine
+from app.database import dispose_engine
 
 # Route imports
 from app.api.routes.health import router as health_router
@@ -24,6 +24,7 @@ from app.api.routes.analysis import router as analysis_router
 from app.api.routes.archaeology import router as archaeology_router
 from app.api.routes.ai import router as ai_router
 from app.api.routes.report import router as report_router
+from app.api.routes.rules import router as rules_router
 
 # Configure logging
 logging.basicConfig(
@@ -42,9 +43,6 @@ async def lifespan(app: FastAPI):
     # Create data directories
     os.makedirs("data", exist_ok=True)
     os.makedirs("data/repos", exist_ok=True)
-
-    # Initialize database tables
-    await create_tables()
 
     logger.info("🔬 CodeAutopsy API v2.0 is running!")
     logger.info(f"📊 Database: PostgreSQL (async)")
@@ -88,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(archaeology_router)
     app.include_router(ai_router)
     app.include_router(report_router)
+    app.include_router(rules_router)
 
     return app
 

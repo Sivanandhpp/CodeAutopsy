@@ -11,7 +11,7 @@ Usage
     from app.services.ai import get_ai_gateway
 
     gateway = get_ai_gateway()
-    result  = await gateway.generate_fix(code, issue_type, language)
+    result  = await gateway.generate_fix(code, defect_family, language)
     summary = await gateway.stream_summary(issues, send_event)
 """
 
@@ -95,7 +95,7 @@ class AIGateway:
     async def generate_fix(
         self,
         code_snippet: str,
-        issue_type: str,
+        defect_family: str,
         language: str = "python",
         file_path: Optional[str] = None,
         line_number: Optional[int] = None,
@@ -126,7 +126,7 @@ class AIGateway:
                 logger.info("AI Fix: attempting with %s", provider.name)
                 result = await provider.generate_fix(
                     code_snippet=code_snippet,
-                    issue_type=issue_type,
+                    defect_family=defect_family,
                     language=language,
                     file_path=file_path,
                     line_number=line_number,

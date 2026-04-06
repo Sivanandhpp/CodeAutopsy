@@ -330,10 +330,10 @@ export async function getBlameHeatmap(analysisId, filePath) {
 // AI API
 // ═════════════════════════════════════════════════════════════
 
-export async function analyzeWithAI(codeSnippet, issueType, language = 'python') {
+export async function analyzeWithAI(codeSnippet, defectFamily, language = 'python') {
   const response = await api.post('/api/ai/analyze', {
     code_snippet: codeSnippet,
-    issue_type: issueType,
+    defect_family: defectFamily,
     language,
   });
   return response.data;

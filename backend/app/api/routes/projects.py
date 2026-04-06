@@ -56,6 +56,7 @@ def _build_project_response(
             project_id=a.project_id,
             repo_url=a.repo_url,
             repo_name=a.repo_name,
+            clone_path=a.clone_path,
             status=a.status,
             health_score=a.health_score,
             total_issues=a.total_issues,
@@ -324,13 +325,14 @@ async def delete_project(
     # 1. Physically delete repository folders
     # Project loads analyses thanks to selectinload setup in _get_user_project
     for analysis in project.analyses:
-        if analysis.repo_path and os.path.exists(analysis.repo_path):
+        repo_path = analysis.clone_path or analysis.repo_path
+        if repo_path and os.path.exists(repo_path):
             try:
                 # Do safely in a thread to not block event loop
-                await asyncio.to_thread(shutil.rmtree, analysis.repo_path, ignore_errors=True)
-                logger.info(f"Deleted physical repo sandbox: {analysis.repo_path}")
+                await asyncio.to_thread(shutil.rmtree, repo_path, ignore_errors=True)
+                logger.info(f"Deleted physical repo sandbox: {repo_path}")
             except Exception as e:
-                logger.error(f"Failed to delete repo sandbox {analysis.repo_path}: {e}")
+                logger.error(f"Failed to delete repo sandbox {repo_path}: {e}")
 
     # 2. Delete the Project record. 
     # Provided that SQLAlchemy relationships are configured with cascade="all, delete-orphan",

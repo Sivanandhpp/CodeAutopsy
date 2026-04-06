@@ -40,7 +40,7 @@ class AIProvider(ABC):
     async def generate_fix(
         self,
         code_snippet: str,
-        issue_type: str,
+        defect_family: str,
         language: str = "python",
         file_path: Optional[str] = None,
         line_number: Optional[int] = None,
