@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     """Application settings — all configurable via environment variables."""
 
     # ─── Database ────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://codeautopsy:codeautopsy_dev_2024@localhost:5432/codeautopsy"
+    # Value is injected from .env. We don't hardcode connection strings here.
+    DATABASE_URL: str = ""
 
     # Connection pool tuning for concurrent analysis
     DB_POOL_SIZE: int = 20
@@ -25,7 +26,8 @@ class Settings(BaseSettings):
     DB_POOL_RECYCLE: int = 1800  # Recycle connections every 30 min
 
     # ─── JWT Authentication ──────────────────────────────────
-    JWT_SECRET_KEY: str = "CHANGE-THIS-IN-PRODUCTION-use-openssl-rand-hex-32"
+    # Secret must be injected via .env
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
     JWT_OTP_TOKEN_EXPIRE_MINUTES: int = 15       # Temporary token after OTP verification
@@ -48,14 +50,14 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
 
     # ─── Ollama (Local AI) ───────────────────────────────────
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5-coder:3b"
+    OLLAMA_BASE_URL: str = ""
+    OLLAMA_MODEL: str = ""
     OLLAMA_TIMEOUT: int = 120                # Per-file analysis timeout
     OLLAMA_MAX_CONCURRENT: int = 4           # Max concurrent Ollama requests
     OLLAMA_ENABLED: bool = True
 
     # ─── CORS ────────────────────────────────────────────────
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = ""
 
     # ─── Analysis Limits ─────────────────────────────────────
     MAX_REPO_SIZE_MB: int = 100
