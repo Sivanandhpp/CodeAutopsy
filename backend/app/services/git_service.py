@@ -8,7 +8,7 @@ import re
 import shutil
 from pathlib import Path
 
-from git import Repo, GitCommandError
+from git import Repo, GitCommandError, Git
 from app.utils.languages import LANGUAGE_MAP
 from app.services.repo_storage_service import RepoStorageService
 
@@ -80,6 +80,37 @@ class GitService:
             if repo_path and os.path.exists(repo_path):
                 shutil.rmtree(repo_path, ignore_errors=True)
             raise RuntimeError(f"Failed to clone repository: {str(e)}")
+
+    def get_remote_head_sha(self, repo_url: str) -> str | None:
+        """Fetch the remote HEAD SHA without cloning the repo."""
+        valid, result = self.validate_github_url(repo_url)
+        if not valid:
+            raise ValueError(result)
+        try:
+            output = Git().ls_remote(result, "HEAD")
+            return output.split()[0] if output else None
+        except GitCommandError:
+            return None
+
+    def refresh_repository(self, repo_path: str) -> str:
+        """Refresh an existing clone by fetching and hard-resetting to origin/HEAD."""
+        if not repo_path or not os.path.exists(repo_path):
+            raise FileNotFoundError("Repository path not found")
+        try:
+            repo = Repo(repo_path)
+            repo.git.fetch("--all", "--prune")
+            try:
+                repo.git.reset("--hard", "origin/HEAD")
+            except GitCommandError:
+                repo.git.reset("--hard", "HEAD")
+            repo.git.clean("-xdf")
+            try:
+                repo.git.pull("--ff-only")
+            except GitCommandError:
+                pass
+            return repo_path
+        except Exception as e:
+            raise RuntimeError(f"Failed to refresh repository: {str(e)}")
     
     def get_file_tree(self, repo_path: str) -> list[dict]:
         """

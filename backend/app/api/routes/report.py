@@ -9,6 +9,8 @@ import json
 import logging
 from datetime import datetime
 from io import BytesIO
+from collections import Counter
+from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
@@ -71,6 +73,37 @@ def get_grade(score):
     if score >= 70: return 'C'
     if score >= 60: return 'D'
     return 'F'
+
+
+def get_risk_label(sev_counts: dict) -> tuple[str, colors.Color]:
+    if sev_counts.get('blocker', 0) > 0:
+        return "Blocker risks present", C_BLOCKER
+    if sev_counts.get('critical', 0) > 0:
+        return "Critical risks present", C_CRITICAL
+    if sev_counts.get('high', 0) > 0:
+        return "High-risk issues detected", C_HIGH
+    if sev_counts.get('medium', 0) > 0:
+        return "Moderate-risk issues", C_MEDIUM
+    return "Low overall risk", C_SUCCESS
+
+
+def format_ai_summary(summary: str) -> str:
+    if not summary:
+        return ""
+    formatted = []
+    for line in summary.splitlines():
+        text = line.strip()
+        if not text:
+            formatted.append("")
+            continue
+        if text.startswith("#"):
+            formatted.append(f"<b>{escape(text.lstrip('#').strip())}</b>")
+            continue
+        if text.startswith(('-', '*', '•')):
+            formatted.append(f"• {escape(text.lstrip('-*•').strip())}")
+            continue
+        formatted.append(escape(text))
+    return "<br/>".join(formatted)
 
 
 class BrandedCanvas(canvas.Canvas):
@@ -144,9 +177,27 @@ def _make_styles():
             fontSize=14, fontName='Helvetica-Bold',
             textColor=C_PRIMARY, spaceBefore=24, spaceAfter=10,
         ),
+        'subsection': ParagraphStyle(
+            'SubSection', parent=base['Heading3'],
+            fontSize=11, fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#334155'), spaceBefore=12, spaceAfter=6,
+        ),
         'body': ParagraphStyle(
             'Body', parent=base['Normal'],
             fontSize=9, textColor=colors.HexColor('#374151'), spaceAfter=4,
+        ),
+        'body_sm': ParagraphStyle(
+            'BodySm', parent=base['Normal'],
+            fontSize=8.5, textColor=colors.HexColor('#475569'), leading=12,
+        ),
+        'callout_title': ParagraphStyle(
+            'CalloutTitle', parent=base['Heading3'],
+            fontSize=11, fontName='Helvetica-Bold',
+            textColor=C_PRIMARY, spaceBefore=0, spaceAfter=6,
+        ),
+        'callout_body': ParagraphStyle(
+            'CalloutBody', parent=base['Normal'],
+            fontSize=9.2, textColor=colors.HexColor('#1f2937'), leading=14,
         ),
         'caption': ParagraphStyle(
             'Caption', parent=base['Normal'],
@@ -274,6 +325,19 @@ async def export_pdf(
         s = i.get("severity", "info")
         sev_counts[s] = sev_counts.get(s, 0) + 1
 
+    family_counts = Counter()
+    for i in issues:
+        family = i.get("defect_family", "unknown") or "unknown"
+        family_counts[family] += 1
+
+    top_families = family_counts.most_common(8)
+    top_family_label = top_families[0][0] if top_families else "None"
+
+    lang_counts = analysis.get_languages()
+    top_languages = ", ".join(list(lang_counts.keys())[:3]) if lang_counts else "N/A"
+
+    risk_label, risk_color = get_risk_label(sev_counts)
+
     health_score = analysis.health_score or 0
     grade = get_grade(health_score)
     score_color = get_score_color(health_score)
@@ -326,6 +390,28 @@ async def export_pdf(
     elems.append(stat_table)
     elems.append(Spacer(1, 20))
 
+    # Executive Highlights
+    highlights = [
+        ["Top Risk", "Hotspot Family", "Language Hotspots"],
+        [risk_label, top_family_label, top_languages],
+    ]
+    highlight_table = Table(highlights, colWidths=[2.1*inch, 2.1*inch, 2.1*inch], hAlign='LEFT')
+    highlight_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), C_LIGHT_BG),
+        ('TEXTCOLOR', (0, 0), (-1, 0), C_TEXT_SEC),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TEXTCOLOR', (0, 1), (0, 1), risk_color),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (-1, 1), 9),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elems.append(highlight_table)
+    elems.append(Spacer(1, 18))
+
     # Severity Breakdown
     elems.append(Paragraph("Issue Breakdown by Severity", S['section']))
     sev_order = ["blocker", "critical", "high", "medium", "low", "info", "trace"]
@@ -356,6 +442,55 @@ async def export_pdf(
         style_cmds.append(('TEXTCOLOR', (0, r), (0, r), SEV_COLOR.get(sev, C_TEXT_MUT)))
     sev_table.setStyle(TableStyle(style_cmds))
     elems.append(sev_table)
+    elems.append(Spacer(1, 24))
+
+    # Defect Family Breakdown
+    elems.append(Paragraph("Defect Family Hotspots", S['section']))
+    if not top_families:
+        elems.append(Paragraph("No defects detected.", S['body']))
+    else:
+        family_rows = []
+        for family, count in top_families:
+            pct = int((count / total_issues_count) * 100)
+            family_rows.append([family, str(count), f"{pct}%"])
+        family_table = Table(
+            [["Family", "Count", "Proportion"]] + family_rows,
+            colWidths=[2.6*inch, 0.9*inch, 1.0*inch], hAlign='LEFT'
+        )
+        family_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), C_HEADER_BG),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#a5b4fc')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+        ]))
+        elems.append(family_table)
+    elems.append(Spacer(1, 20))
+
+    # AI Executive Summary
+    elems.append(Paragraph("AI Executive Summary", S['section']))
+    summary_text = format_ai_summary(analysis.get_ai_summary())
+    if summary_text:
+        summary_table = Table(
+            [[Paragraph(summary_text, S['callout_body'])]],
+            colWidths=[6.4*inch]
+        )
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#eef2ff')),
+            ('BOX', (0, 0), (-1, -1), 0.8, colors.HexColor('#c7d2fe')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elems.append(summary_table)
+        elems.append(Spacer(1, 8))
+        elems.append(Paragraph("Generated by local LLM analysis.", S['caption']))
+    else:
+        elems.append(Paragraph("AI summary not available for this run.", S['body_sm']))
     elems.append(Spacer(1, 24))
 
     # Issues Table (top 100)

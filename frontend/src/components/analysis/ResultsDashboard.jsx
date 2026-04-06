@@ -3,7 +3,7 @@
  * Displays analysis results: health score, issues list, file tree, and severity breakdown.
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -12,10 +12,12 @@ import {
   ArrowLeft, Shield, FileCode, Bug, AlertTriangle,
   ChevronRight, ChevronDown, Filter, Search, Clock,
   Code2, GitBranch, Brain, Eye, Zap, Microscope, ExternalLink,
-  AlertCircle, Info, CheckCircle2, Loader2, Download, X, Sparkles
+  AlertCircle, Info, CheckCircle2, Loader2, Download, X, Sparkles,
+  RotateCw, FileText,
 } from 'lucide-react';
 import useAnalysisStore from '../../lib/analysisStore';
-import { downloadReport } from '../../lib/api';
+import useAuthStore from '../../lib/authStore';
+import { analyzeRepository, downloadReport } from '../../lib/api';
 import ArchaeologyPanel from '../archaeology/ArchaeologyPanel';
 import AIPanel from './AIPanel';
 import Navbar from '../ui/Navbar';
@@ -57,8 +59,15 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
   const [editorLoading, setEditorLoading] = useState(false);
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
+  const [rerunConfirmOpen, setRerunConfirmOpen] = useState(false);
+  const [rerunLoading, setRerunLoading] = useState(false);
+  const exportMenuRef = useRef(null);
+  const exportButtonRef = useRef(null);
+  const rerunMenuRef = useRef(null);
+  const rerunButtonRef = useRef(null);
   const navigate = useNavigate();
   const [errorBannerDismissed, setErrorBannerDismissed] = useState(false);
+  const { isAuthenticated } = useAuthStore();
   
   // In case analysisResult is still hydrating from SSE, we gracefully fallback
   const finalHealthScore = healthScore ?? analysisResult?.health_score ?? 0;
@@ -83,6 +92,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
   const finalTotalLines = totalLines || analysisResult?.total_lines || 0;
   const finalLanguages = Object.keys(languages).length ? languages : (analysisResult?.languages || {});
   const finalTotalIssues = issues.length;
+  const isAnalysisRunning = ['queued', 'cloning', 'analyzing', 'static_done', 'ai_scanning'].includes(analysisStatus);
 
   const handleOpenEditor = async () => {
     setEditorLoading(true);
@@ -101,6 +111,23 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
       // Optional: Add toast notification here
     } finally {
       setExportingFormat(null);
+    }
+  };
+
+  const handleForceRerun = async () => {
+    if (!finalRepoUrl) return;
+    setRerunLoading(true);
+    setRerunConfirmOpen(false);
+    try {
+      const data = await analyzeRepository(finalRepoUrl, analysisResult?.project_id || null, {
+        force: true,
+      });
+      sessionStorage.setItem('ca_repo_url', finalRepoUrl);
+      navigate(`/analysis/${data.analysis_id}`);
+    } catch (error) {
+      console.error('Failed to re-run analysis:', error);
+    } finally {
+      setRerunLoading(false);
     }
   };
   
@@ -188,6 +215,44 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
     }
   }, [issuesByFile]);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const target = event.target;
+      if (
+        exportDropdownOpen &&
+        exportMenuRef.current &&
+        exportButtonRef.current &&
+        !exportMenuRef.current.contains(target) &&
+        !exportButtonRef.current.contains(target)
+      ) {
+        setExportDropdownOpen(false);
+      }
+      if (
+        rerunConfirmOpen &&
+        rerunMenuRef.current &&
+        rerunButtonRef.current &&
+        !rerunMenuRef.current.contains(target) &&
+        !rerunButtonRef.current.contains(target)
+      ) {
+        setRerunConfirmOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setExportDropdownOpen(false);
+        setRerunConfirmOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [exportDropdownOpen, rerunConfirmOpen]);
+
   const toggleFile = (path) => {
     const newExpanded = new Set(expandedFiles);
     if (newExpanded.has(path)) {
@@ -219,68 +284,118 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
           </div>
           
           <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <div style={{ position: 'relative' }}>
+            <div className="export-wrap">
+              <button 
+                ref={exportButtonRef}
+                className="open-editor-btn export-btn"
+                onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                disabled={exportingFormat !== null}
+              >
+                {exportingFormat ? (
+                  <>
+                    <Loader2 size={14} className="editor-btn-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    Export Report
+                    <ChevronDown size={14} style={{ marginLeft: 4 }} />
+                  </>
+                )}
+              </button>
+              <AnimatePresence>
+                {exportDropdownOpen && (
+                  <motion.div
+                    ref={exportMenuRef}
+                    className="export-menu"
+                    initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    <div className="export-menu-title">Export Report</div>
+                    <div className="export-menu-subtitle">Choose a format to download</div>
+                    <button 
+                      onClick={() => handleExport('json')}
+                      className="export-menu-item"
+                    >
+                      <span className="export-menu-icon"><FileCode size={14} /></span>
+                      <span className="export-menu-label">Raw JSON</span>
+                      <span className="export-menu-meta">Data only</span>
+                    </button>
+                    <button 
+                      onClick={() => handleExport('pdf')}
+                      className="export-menu-item"
+                    >
+                      <span className="export-menu-icon"><FileText size={14} /></span>
+                      <span className="export-menu-label">Premium PDF</span>
+                      <span className="export-menu-meta">Executive report</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {isAuthenticated && (
+              <div className="rerun-wrap">
+                <button
+                  ref={rerunButtonRef}
+                  className="open-editor-btn rerun-btn"
+                  onClick={() => setRerunConfirmOpen(!rerunConfirmOpen)}
+                  disabled={rerunLoading || isAnalysisRunning}
+                >
+                  {rerunLoading ? (
+                    <>
+                      <Loader2 size={14} className="editor-btn-spin" />
+                      Re-running...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCw size={14} />
+                      Force Re-run
+                    </>
+                  )}
+                </button>
+                <AnimatePresence>
+                  {rerunConfirmOpen && (
+                    <motion.div
+                      ref={rerunMenuRef}
+                      className="rerun-popover"
+                      initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.18 }}
+                    >
+                      <div className="rerun-title">Start a new snapshot?</div>
+                      <div className="rerun-text">This creates a fresh analysis run and keeps history.</div>
+                      <div className="rerun-actions">
+                        <button className="rerun-cancel" onClick={() => setRerunConfirmOpen(false)}>Cancel</button>
+                        <button className="rerun-confirm" onClick={handleForceRerun}>Re-run now</button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
             <button 
               className="open-editor-btn"
-              onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
-              disabled={exportingFormat !== null}
-              style={{ background: 'var(--ca-bg-elevated)', border: '1px solid var(--ca-border)', color: 'var(--ca-text)' }}
+              onClick={handleOpenEditor}
+              disabled={editorLoading}
             >
-              {exportingFormat ? (
+              {editorLoading ? (
                 <>
                   <Loader2 size={14} className="editor-btn-spin" />
-                  Generating...
+                  Loading Editor...
                 </>
               ) : (
                 <>
-                  <Download size={14} />
-                  Export Report
-                  <ChevronDown size={14} style={{ marginLeft: 4 }} />
+                  <Code2 size={14} />
+                  Open in Editor
                 </>
               )}
             </button>
-            {exportDropdownOpen && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-                background: 'var(--ca-bg-elevated)', border: '1px solid var(--ca-border)',
-                borderRadius: '8px', padding: '6px', zIndex: 50, display: 'flex', flexDirection: 'column', gap: '2px',
-                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)', width: '160px'
-              }}>
-                <button 
-                  onClick={() => handleExport('json')}
-                  className="filter-btn"
-                  style={{ justifyContent: 'flex-start', width: '100%', padding: '8px 12px', borderRadius: '6px' }}
-                >
-                  Raw JSON
-                </button>
-                <button 
-                  onClick={() => handleExport('pdf')}
-                  className="filter-btn"
-                  style={{ justifyContent: 'flex-start', width: '100%', padding: '8px 12px', borderRadius: '6px' }}
-                >
-                  Summary PDF
-                </button>
-              </div>
-            )}
-            </div>
-
-          <button 
-            className="open-editor-btn"
-            onClick={handleOpenEditor}
-            disabled={editorLoading}
-          >
-            {editorLoading ? (
-              <>
-                <Loader2 size={14} className="editor-btn-spin" />
-                Loading Editor...
-              </>
-            ) : (
-              <>
-                <Code2 size={14} />
-                Open in Editor
-              </>
-            )}
-          </button>
           </div>
         </div>
         
@@ -679,6 +794,154 @@ const dashboardStyles = `
   .open-editor-btn:disabled {
     opacity: 0.7;
     cursor: wait;
+  }
+
+  .export-wrap,
+  .rerun-wrap {
+    position: relative;
+  }
+
+  .export-btn {
+    background: var(--ca-glass-bg);
+    border: 1px solid var(--ca-glass-border);
+    color: var(--ca-text);
+    box-shadow: var(--ca-shadow-sm);
+  }
+
+  .export-btn:hover:not(:disabled) {
+    border-color: rgba(99, 102, 241, 0.5);
+    box-shadow: var(--ca-shadow-glow);
+  }
+
+  .rerun-btn {
+    background: transparent;
+    border: 1px solid var(--ca-border);
+    color: var(--ca-text-secondary);
+  }
+
+  .rerun-btn:hover:not(:disabled) {
+    color: var(--ca-text);
+    border-color: rgba(99, 102, 241, 0.5);
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.2);
+  }
+
+  .export-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    min-width: 210px;
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--ca-glass-bg);
+    border: 1px solid var(--ca-glass-border);
+    box-shadow: var(--ca-shadow-md);
+    backdrop-filter: blur(16px);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .export-menu-title {
+    font-weight: 700;
+    color: var(--ca-text);
+    font-size: 0.9rem;
+  }
+
+  .export-menu-subtitle {
+    color: var(--ca-text-muted);
+    font-size: 0.75rem;
+    margin-bottom: 6px;
+  }
+
+  .export-menu-item {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: rgba(15, 23, 42, 0.35);
+    color: var(--ca-text);
+    cursor: pointer;
+    font-size: 0.82rem;
+    text-align: left;
+    transition: all 0.18s ease;
+  }
+
+  .export-menu-item:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(99, 102, 241, 0.08);
+  }
+
+  .export-menu-icon {
+    color: var(--ca-primary-light);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .export-menu-label {
+    font-weight: 600;
+  }
+
+  .export-menu-meta {
+    color: var(--ca-text-muted);
+    font-size: 0.7rem;
+  }
+
+  .rerun-popover {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 220px;
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--ca-glass-bg);
+    border: 1px solid var(--ca-glass-border);
+    box-shadow: var(--ca-shadow-md);
+    backdrop-filter: blur(16px);
+    z-index: 50;
+  }
+
+  .rerun-title {
+    font-weight: 700;
+    color: var(--ca-text);
+    font-size: 0.85rem;
+    margin-bottom: 4px;
+  }
+
+  .rerun-text {
+    color: var(--ca-text-muted);
+    font-size: 0.75rem;
+    margin-bottom: 10px;
+  }
+
+  .rerun-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .rerun-cancel,
+  .rerun-confirm {
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .rerun-cancel {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--ca-text-secondary);
+  }
+
+  .rerun-confirm {
+    background: var(--ca-primary);
+    color: white;
   }
   .editor-btn-spin {
     animation: editor-spin 1s linear infinite;

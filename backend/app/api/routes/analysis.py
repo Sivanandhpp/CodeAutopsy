@@ -22,6 +22,7 @@ SSE Event Types:
 
 import uuid
 import json
+import os
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -61,6 +62,24 @@ def _get_analysis_semaphore() -> asyncio.Semaphore:
         settings = get_settings()
         _analysis_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_ANALYSES)
     return _analysis_semaphore
+
+
+async def _get_latest_analysis(
+    db: AsyncSession,
+    repo_url: str,
+    project_id: Optional[object],
+    status_filter: Optional[list[str]] = None,
+) -> Optional[AnalysisResult]:
+    query = select(AnalysisResult).where(AnalysisResult.repo_url == repo_url)
+    if project_id:
+        query = query.where(AnalysisResult.project_id == project_id)
+    else:
+        query = query.where(AnalysisResult.project_id.is_(None))
+    if status_filter:
+        query = query.where(AnalysisResult.status.in_(status_filter))
+    query = query.order_by(AnalysisResult.created_at.desc())
+    result = await db.execute(query)
+    return result.scalars().first()
 
 
 # ─── Per-user rate limiter ───────────────────────────────────
@@ -189,15 +208,42 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
         # PHASE 1: Clone + Static Analysis (instant results)
         # ═══════════════════════════════════════════════════════
 
-        # Step 1: Clone repository
+        # Step 1: Clone or refresh repository
         await _emit_event(analysis_id, "status", {
             "status": "cloning", "progress": 5,
-            "message": "Cloning repository...", "step": "clone",
+            "message": "Preparing repository...", "step": "clone",
         })
 
-        repo_path, repo_name = await asyncio.to_thread(
-            git_service.clone_repository, repo_url, analysis_id
+        result = await db.execute(
+            select(AnalysisResult).where(AnalysisResult.id == analysis_id)
         )
+        record = result.scalar_one_or_none()
+
+        existing_path = None
+        if record:
+            candidate = record.clone_path or record.repo_path
+            if candidate and os.path.isdir(candidate):
+                existing_path = candidate
+
+        if existing_path:
+            try:
+                await _emit_event(analysis_id, "status", {
+                    "status": "cloning", "progress": 8,
+                    "message": "Refreshing repository...", "step": "clone",
+                })
+                repo_path = await asyncio.to_thread(
+                    git_service.refresh_repository, existing_path
+                )
+                repo_name = git_service.extract_repo_name(repo_url)
+            except Exception as e:
+                logger.warning(f"Repo refresh failed, recloning: {e}")
+                repo_path, repo_name = await asyncio.to_thread(
+                    git_service.clone_repository, repo_url, analysis_id
+                )
+        else:
+            repo_path, repo_name = await asyncio.to_thread(
+                git_service.clone_repository, repo_url, analysis_id
+            )
 
         await _emit_event(analysis_id, "status", {
             "status": "cloning", "progress": 20,
@@ -397,6 +443,66 @@ def _normalize_issue(issue: dict) -> dict:
     return data
 
 
+def _format_sse_event(event_type: str, data: dict) -> str:
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+
+async def _build_snapshot_events(analysis_id: str) -> list[tuple[str, dict]]:
+    async with get_standalone_session() as db:
+        result = await db.execute(
+            select(AnalysisResult).where(AnalysisResult.id == analysis_id)
+        )
+        analysis = result.scalar_one_or_none()
+        if not analysis:
+            return []
+
+        issues = [_normalize_issue(i) for i in analysis.get_issues()]
+        file_tree = analysis.get_file_tree()
+        languages = analysis.get_languages()
+
+        has_static = bool(
+            analysis.health_score is not None or analysis.file_count
+            or analysis.total_lines or file_tree or issues
+        )
+
+        events: list[tuple[str, dict]] = []
+        if has_static:
+            events.append(("static_complete", {
+                "issues": issues,
+                "total_issues": len(issues),
+                "health_score": analysis.health_score or 0,
+                "file_tree": file_tree,
+                "languages": languages,
+                "total_lines": analysis.total_lines or 0,
+                "repo_name": analysis.repo_name or analysis.repo_url.split("github.com/")[-1].strip("/"),
+                "progress": 50,
+                "message": "Static analysis complete (snapshot)",
+            }))
+
+        if analysis.ai_summary:
+            events.append(("ai_summary_complete", {
+                "summary": analysis.ai_summary,
+                "status": "complete",
+                "message": "AI summary available (snapshot)",
+            }))
+
+        if analysis.status == "complete":
+            events.append(("complete", {
+                "status": "complete",
+                "progress": 100,
+                "health_score": analysis.health_score or 0,
+                "total_issues": analysis.total_issues or len(issues),
+                "message": "Analysis complete (snapshot)",
+            }))
+        elif analysis.status in ("failed", "cancelled"):
+            events.append(("analysis_error", {
+                "status": analysis.status,
+                "message": analysis.error_message or "Analysis failed",
+            }))
+
+        return events
+
+
 # ─── Endpoints ───────────────────────────────────────────────
 
 @router.post("/analyze/github", response_model=AnalyzeResponse)
@@ -412,19 +518,85 @@ async def analyze_github_repo(
 
     analysis_id = str(uuid.uuid4())
     project_id = req.project_id
+    force_rerun = bool(req.force) if user else False
 
-    # Only create/link projects for authenticated users
+    # Reuse existing project for authenticated users if possible
     if user and project_id is None:
-        repo_name = req.repo_url.split("github.com/")[-1].strip("/")
-        project = Project(repo_url=req.repo_url, repo_name=repo_name)
-        db.add(project)
-        await db.flush()
+        existing_project = await db.execute(
+            select(Project)
+            .join(UserProject)
+            .where(UserProject.user_id == user.id, Project.repo_url == req.repo_url)
+            .order_by(Project.created_at.desc())
+        )
+        project = existing_project.scalars().first()
+        if project:
+            project_id = project.id
+        else:
+            repo_name = req.repo_url.split("github.com/")[-1].strip("/")
+            project = Project(repo_url=req.repo_url, repo_name=repo_name)
+            db.add(project)
+            await db.flush()
 
-        user_project = UserProject(user_id=user.id, project_id=project.id, role="owner")
-        db.add(user_project)
-        await db.flush()
+            user_project = UserProject(user_id=user.id, project_id=project.id, role="owner")
+            db.add(user_project)
+            await db.flush()
 
-        project_id = project.id
+            project_id = project.id
+
+    # If an analysis is already running, return it
+    in_progress = await _get_latest_analysis(
+        db,
+        req.repo_url,
+        project_id,
+        status_filter=["queued", "cloning", "analyzing"],
+    )
+    if in_progress:
+        return AnalyzeResponse(
+            analysis_id=in_progress.id,
+            project_id=project_id,
+            status=in_progress.status,
+            message="Analysis already in progress.",
+        )
+
+    # Latest completed analysis for reuse
+    latest_complete = await _get_latest_analysis(
+        db,
+        req.repo_url,
+        project_id,
+        status_filter=["complete"],
+    )
+
+    if not user and latest_complete:
+        return AnalyzeResponse(
+            analysis_id=latest_complete.id,
+            project_id=project_id,
+            status=latest_complete.status,
+            message="Returning existing analysis for this repository.",
+        )
+
+    if user and latest_complete and not force_rerun:
+        reuse_message = None
+        if latest_complete.commit_sha:
+            remote_head = await asyncio.to_thread(
+                git_service.get_remote_head_sha, req.repo_url
+            )
+            if remote_head and remote_head == latest_complete.commit_sha:
+                reuse_message = "No new commits detected. Returning existing analysis."
+            elif remote_head is None:
+                reuse_message = "Remote HEAD check unavailable. Returning existing analysis."
+        if reuse_message:
+            return AnalyzeResponse(
+                analysis_id=latest_complete.id,
+                project_id=project_id,
+                status=latest_complete.status,
+                message=reuse_message,
+            )
+
+    reuse_clone_path = None
+    if latest_complete and (force_rerun or user):
+        candidate = latest_complete.clone_path or latest_complete.repo_path
+        if candidate and os.path.exists(candidate):
+            reuse_clone_path = candidate
 
     # Create analysis record (project_id is None for anonymous users)
     record = AnalysisResult(
@@ -433,6 +605,9 @@ async def analyze_github_repo(
         repo_url=req.repo_url,
         status="queued",
     )
+    if reuse_clone_path:
+        record.clone_path = reuse_clone_path
+        record.repo_path = reuse_clone_path
     db.add(record)
     await db.flush()
 
@@ -530,6 +705,12 @@ async def stream_progress(analysis_id: str, request: Request):
         _event_subscribers[analysis_id] = _event_subscribers.get(analysis_id, 0) + 1
 
         try:
+            snapshot_events = await _build_snapshot_events(analysis_id)
+            for event_type, data in snapshot_events:
+                yield _format_sse_event(event_type, data)
+                if event_type in ("complete", "analysis_error"):
+                    return
+
             while True:
                 if await request.is_disconnected():
                     logger.info(f"SSE client disconnected for {analysis_id[:8]}")

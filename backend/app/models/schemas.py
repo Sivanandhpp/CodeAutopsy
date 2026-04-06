@@ -191,6 +191,7 @@ class AnalyzeRequest(BaseModel):
     """Request to analyze a GitHub repository."""
     repo_url: str = Field(..., description="GitHub repository URL")
     project_id: Optional[UUID] = None  # Optional: link to existing project
+    force: bool = False
 
     @field_validator("repo_url")
     @classmethod

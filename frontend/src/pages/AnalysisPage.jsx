@@ -85,7 +85,7 @@ export default function AnalysisPage() {
   const terminalEventHandledRef = useRef(false);
 
   const { 
-    analysisStatus, analysisResult, staticIssues, setAnalysisResult, setAnalysisId,
+    analysisStatus, analysisResult, staticIssues, setAnalysisResult, setAnalysisId, reset,
     handleStaticComplete, handleStackDetected,
     handleAiSummaryStart, handleAiSummaryChunk, handleAiSummaryComplete,
     handleAiSummaryUnavailable, handleAiSummaryError,
@@ -109,14 +109,48 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    if (id) {
+    let cancelled = false;
+
+    if (analysisResult?.id && analysisResult.id !== id) {
+      reset();
+    }
+
+    async function hydrateAndStream() {
+      if (!id) return;
       setAnalysisId(id);
-      // Try to get repo URL from store
       const stored = sessionStorage.getItem('ca_repo_url');
       if (stored) setRepoUrl(stored);
-      startStreaming(id);
+
+      try {
+        const data = await getAnalysisResults(id);
+        if (cancelled) return;
+        setAnalysisResult(data);
+        if (data.repo_url) {
+          sessionStorage.setItem('ca_repo_url', data.repo_url);
+          setRepoUrl(data.repo_url);
+        }
+
+        if (data.status === 'complete') {
+          setProgress(100);
+          return;
+        }
+        if (data.status === 'failed' || data.status === 'cancelled') {
+          setError(data.error_message || 'Analysis failed');
+          return;
+        }
+
+        const shouldStream = ['queued', 'cloning', 'analyzing'].includes(data.status);
+        if (shouldStream) {
+          startStreaming(id);
+        }
+      } catch {
+        startStreaming(id);
+      }
     }
+
+    hydrateAndStream();
     return () => {
+      cancelled = true;
       if (eventSourceRef.current) eventSourceRef.current.close();
     };
   }, [id]);
@@ -148,6 +182,9 @@ export default function AnalysisPage() {
   };
 
   function startStreaming(analysisId) {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const eventSource = new EventSource(`${apiUrl}/api/analyze/stream/${analysisId}`);
     eventSourceRef.current = eventSource;
@@ -364,12 +401,15 @@ export default function AnalysisPage() {
   };
 
   // Results state — show dashboard if we have static results OR if error occurred after Phase 1
-  const hasPartialResults =
+  const isCurrentAnalysis = analysisResult?.id ? analysisResult.id === id : true;
+  const hasPartialResults = isCurrentAnalysis && (
     (Array.isArray(staticIssues) && staticIssues.length > 0) ||
-    (Array.isArray(analysisResult?.issues) && analysisResult.issues.length > 0);
-  const showDashboard =
+    (Array.isArray(analysisResult?.issues) && analysisResult.issues.length > 0)
+  );
+  const showDashboard = isCurrentAnalysis && (
     ['static_done', 'ai_scanning', 'complete'].includes(analysisStatus) ||
-    (analysisStatus === 'error' && hasPartialResults);
+    (analysisStatus === 'error' && hasPartialResults)
+  );
   if (showDashboard) {
     return <ResultsDashboard analysisId={id} errorBanner={error} />;
   }

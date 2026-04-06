@@ -133,10 +133,11 @@ export async function searchUsers(query) {
 // ANALYSIS API
 // ═════════════════════════════════════════════════════════════
 
-export async function analyzeRepository(repoUrl, projectId = null) {
+export async function analyzeRepository(repoUrl, projectId = null, options = {}) {
   const response = await api.post('/api/analyze/github', {
     repo_url: repoUrl,
     project_id: projectId,
+    force: Boolean(options.force),
   });
   return response.data;
 }
