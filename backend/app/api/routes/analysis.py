@@ -42,7 +42,7 @@ from app.models.schemas import (
 )
 from app.services.git_service import git_service
 from app.services.static_analyzer import static_analyzer
-from app.services.ollama_service import OllamaAnalyzer
+from app.services.ai import get_ai_gateway
 from app.utils.progress import progress_tracker
 from app.api.deps import get_current_user, get_current_user_optional
 from app.config import get_settings
@@ -298,10 +298,10 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
 
         ai_summary_text: str = ""
         try:
-            analyzer = OllamaAnalyzer(repo_path)
-            ai_summary_text = await analyzer.stream_summary(issues, send_ai_event)
+            gateway = get_ai_gateway()
+            ai_summary_text = await gateway.stream_summary(issues, send_ai_event)
         except Exception as e:
-            logger.warning(f"Ollama summary failed (non-fatal): {e}")
+            logger.warning(f"AI summary failed (non-fatal): {e}")
             await _emit_event(analysis_id, "ai_summary_complete", {
                 "summary": "",
                 "message": f"AI summary unavailable: {str(e)[:100]}",

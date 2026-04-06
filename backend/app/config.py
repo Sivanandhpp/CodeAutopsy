@@ -43,6 +43,8 @@ class Settings(BaseSettings):
 
     # ─── API Keys ────────────────────────────────────────────
     GROQ_API_KEY: str = ""
+    GROQ_ENABLED: bool = True
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
     GITHUB_TOKEN: str = ""
 
     # ─── Ollama (Local AI) ───────────────────────────────────

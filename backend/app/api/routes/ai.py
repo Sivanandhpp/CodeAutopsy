@@ -1,7 +1,8 @@
 """
-AI API Route (Async + Auth)
-============================
-POST /api/ai/analyze — Send a code issue to Groq for AI-powered analysis.
+AI API Route (Async + Auth + Provider Fallback)
+=================================================
+POST /api/ai/analyze — Send a code issue through the AI gateway.
+Automatically uses the best available provider (Groq → Ollama).
 Protected with JWT auth and per-user rate limiting.
 """
 
@@ -12,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.models.schemas import AIAnalyzeRequest, AIAnalyzeResponse
 from app.models.user import User
-from app.services.ai_service import analyze_issue
+from app.services.ai import get_ai_gateway
 from app.api.deps import get_current_user
 from app.config import get_settings
 
@@ -51,8 +52,8 @@ async def ai_analyze(
     user: User = Depends(get_current_user),
 ):
     """
-    Analyze a code issue using Groq AI (cloud).
-    Returns root_cause, fix_strategy, code_patch, confidence, and reasoning.
+    Analyze a code issue using the best available AI provider.
+    Tries Groq first, falls back to Ollama, returns structured error if both fail.
     """
     check_ai_rate_limit(str(user.id))
 
@@ -65,7 +66,8 @@ async def ai_analyze(
             detail="code_snippet too long (max 5000 chars).",
         )
 
-    result = analyze_issue(
+    gateway = get_ai_gateway()
+    result = await gateway.generate_fix(
         code_snippet=req.code_snippet,
         issue_type=req.issue_type,
         language=req.language,
