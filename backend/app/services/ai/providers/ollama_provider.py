@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 MIN_TOTAL_TIMEOUT_SECONDS = 240
 RETRYABLE_EXCEPTIONS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
     httpx.ReadTimeout,
     httpx.ReadError,
     httpx.RemoteProtocolError,
@@ -71,7 +73,8 @@ class OllamaProvider(AIProvider):
                     model_base = settings.OLLAMA_MODEL.split(":")[0]
                     return any(model_base in m for m in models)
             return False
-        except Exception:
+        except Exception as exc:
+            logger.warning("Ollama health check failed at %s. It might be down or unreachable: %s", settings.OLLAMA_BASE_URL, exc)
             return False
 
     # ─── Task: Issue Fix ─────────────────────────────────────
@@ -104,11 +107,35 @@ class OllamaProvider(AIProvider):
         # Build the combined prompt for Ollama's /api/generate
         combined_prompt = f"{FIX_SYSTEM_PROMPT}\n\n{user_prompt}"
 
-        try:
-            result = await self._generate_json(settings, combined_prompt)
-        except Exception as exc:
-            logger.error("Ollama fix generation failed: %s", exc)
-            raise
+        last_error = None
+        result = None
+        for attempt in range(2):
+            try:
+                result = await self._generate_json(settings, combined_prompt)
+                break
+            except RETRYABLE_EXCEPTIONS as exc:
+                last_error = exc
+                logger.warning(
+                    "Ollama generate_fix attempt %s/2 failed with %s: %s",
+                    attempt + 1, exc.__class__.__name__,
+                    _normalize_exception_message(exc),
+                )
+                if attempt == 0:
+                    await asyncio.sleep(2)
+                    continue
+            except asyncio.TimeoutError as exc:
+                last_error = exc
+                logger.warning("Ollama generate_fix attempt %s/2 exceeded timeout", attempt + 1)
+                if attempt == 0:
+                    await asyncio.sleep(2)
+                    continue
+            except Exception as exc:
+                logger.error("Ollama fix generation failed unexpectedly: %s", exc)
+                raise
+        
+        if result is None:
+            detail = _normalize_exception_message(last_error) if last_error else "Unknown error"
+            raise RuntimeError(f"Ollama fix generation failed after retries: {detail}")
 
         result["cached"] = False
         result["provider"] = self.name

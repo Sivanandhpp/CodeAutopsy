@@ -38,7 +38,7 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://codeautopsy:${DB_PASSWORD:-codeautopsy_dev_2024}@db:5432/codeautopsy
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:80"
     ports:
       - "8000:8000"
@@ -85,52 +85,6 @@ services:
     networks:
       - codeautopsy-net
 
-  # ─── Ollama (Local AI) ────────────────────────────────────
-  ollama:
-    image: ollama/ollama:latest
-    container_name: codeautopsy-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    # Warm-up script: pull model + pre-load into memory with a dummy
-    # generate request. This ensures the first real analysis request
-    # doesn't suffer a 30-60s cold-start penalty.
-    entrypoint: >
-      sh -c "
-        ollama serve &
-        OLLAMA_PID=$$!
-
-        echo '[warm-up] Waiting for Ollama server...'
-        for i in 1 2 3 4 5 6 7 8 9 10; do
-          curl -sf http://localhost:11434/api/tags >/dev/null 2>&1 && break
-          sleep 2
-        done
-
-        echo '[warm-up] Pulling qwen2.5-coder:3b...'
-        ollama pull qwen2.5-coder:3b
-
-        echo '[warm-up] Pre-loading model into memory...'
-        curl -sf http://localhost:11434/api/generate \
-          -d '{\"model\":\"qwen2.5-coder:3b\",\"prompt\":\"hi\",\"options\":{\"num_predict\":1}}' \
-          >/dev/null 2>&1 || true
-
-        echo '[warm-up] Model is HOT and ready!'
-        wait $$OLLAMA_PID
-      "
-    healthcheck:
-      # Validates the model is actually loaded, not just that HTTP is up
-      test: >
-        sh -c "
-          curl -sf http://localhost:11434/api/tags | grep -q 'qwen2.5-coder'
-        "
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 60s
-    networks:
-      - codeautopsy-net
 
 # ─── Persistent Volumes ─────────────────────────────────────
 volumes:
@@ -138,8 +92,7 @@ volumes:
     name: codeautopsy-pgdata
   repos_data:
     name: codeautopsy-repos
-  ollama_data:
-    name: codeautopsy-ollama
+
 
 # ─── Network ────────────────────────────────────────────────
 networks:
