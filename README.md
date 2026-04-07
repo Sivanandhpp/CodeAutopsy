@@ -1,266 +1,205 @@
+<div align="center">
+  
+# 🧬 CodeAutopsy
+**A Time Machine for Debugging & Code Analysis**
 
-<h1 align="center">CodeAutopsy</h1>
-<p align="center">
-  <strong>A Time Machine for Debugging</strong>
-</p>
-<p align="center">
-  Don't just find bugs — discover <em>when</em> they were introduced, <em>who</em> wrote them, and <em>how</em> they evolved.
-</p>
-<p align="center">
-  <img src="https://img.shields.io/badge/python-3.10+-blue?logo=python" />
-  <img src="https://img.shields.io/badge/react-19-blue?logo=react" />
-  <img src="https://img.shields.io/badge/fastapi-0.115-green?logo=fastapi" />
-  <img src="https://img.shields.io/badge/languages-369-purple" />
-  <img src="https://img.shields.io/badge/license-MIT-yellow" />
-</p>
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![React 19](https://img.shields.io/badge/react-19-blue.svg?logo=react&logoColor=white)](https://react.dev/)
+[![FastAPI](https://img.   shields.io/badge/FastAPI-0.115-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Languages Supported](https://img.shields.io/badge/Languages-369-purple.svg)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
----
+*Don't just find bugs — discover **when** they were introduced, **who** wrote them, and **how** they evolved.*
 
-## What is CodeAutopsy?
+[Explore Features](#✨-features) • [Installation](#🚀-quick-start) • [API Reference](#🌐-api-reference) • [Roadmap](#🛣-roadmap)
 
-CodeAutopsy is a web-based code analysis platform that combines **static security scanning** with **AI-powered insights** and **Git forensics**.
-
-While tools like SonarQube or Snyk tell you *"Line 45 has SQL injection"*, CodeAutopsy shows you:
-- 📊 A visual timeline of how that buggy code evolved across commits
-- 👤 Who introduced the vulnerability and when
-- 🤖 AI-generated fix suggestions with confidence scoring
-- 🔬 369 programming languages detected automatically
+</div>
 
 ---
 
-## Features
+## 🔬 What is CodeAutopsy?
 
-| Feature | Status |
-|---------|--------|
-| 🔗 GitHub URL Analysis | ✅ Live |
-| 🛡️ Static Security Scanning (16 regex rules + Semgrep) | ✅ Live |
-| 📊 Code Health Score (0–100) | ✅ Live |
-| 🌐 369 Language Detection (904 extensions) | ✅ Live |
-| 📡 Real-time SSE Progress Streaming | ✅ Live |
-| 🌙 Dark/Light Theme Toggle | ✅ Live |
-| 🔍 Code Archaeology (Git blame, timeline) | 🔜 Upcoming |
-| 🤖 AI-Powered Fix Suggestions (Groq) | 🔜 Upcoming |
-| 📝 In-Browser Code Editor (Monaco) | 🔜 Upcoming |
+CodeAutopsy is an advanced, web-based code analysis platform that bridges the gap between **static security scanning**, **Git forensics**, and **AI-powered intelligence**. 
+
+While traditional tools might only tell you *"Line 45 has a SQL injection vulnerability,"* CodeAutopsy provides the full story:
+- 📈 **The Timeline:** A visual history of how the problematic code evolved across multiple commits.
+- 👤 **The Author:** Precise identification of who introduced the vulnerability and when.
+- 🤖 **The Fix:** AI-generated remediation strategies backed by confidence scoring.
+- 🌐 **The Scope:** Automatic detection and support for over 360 programming languages.
 
 ---
 
-## Tech Stack
+## ✨ Features
 
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | React 19, Vite 8, Tailwind CSS 4, Framer Motion, Zustand, Recharts, Lucide Icons |
+We pack a suite of powerful tools into a single, cohesive dashboard to make code analysis seamless and insightful.
+
+### 🛡️ Comprehensive Static Analysis & Security Scanning
+- **Dual-Engine Scanning:** Built-in regex-based scanner with over 16 tailored security rules, plus automatic integration with **Semgrep** for scanning against 1000+ advanced rules if installed.
+- **Code Health Scoring:** Instantly evaluate your project with a comprehensive Code Health Score (0–100) based on vulnerability density and complexity.
+
+### 🧬 Git Forensics & Code Archaeology
+- **Timeline Visualization:** Trace the exact origin of a bug in your git history.
+- **Git Blame Integration:** Understand the context behind code changes by seeing who modified what, and why.
+- **File Evolution Tracking:** Watch how specific files and functions have morphed over time.
+
+### 🤖 AI-Powered Insights (Powered by Groq)
+- **Automated Fix Suggestions:** Highlight a vulnerability and get instant, AI-generated code fixes.
+- **Confidence Scoring:** AI suggestions come with a confidence score and detailed explanation so you can trust the changes.
+
+### 📝 Interactive In-Browser Experience
+- **Monaco Code Editor:** A full-fledged, VS Code-like editor built right into the browser for seamless code viewing and experimentation.
+- **Real-Time Progress:** Watch the analysis happen live via Server-Sent Events (SSE) streaming.
+- **Modern UI/UX:** A beautiful, responsive interface with Dark/Light mode toggles, built with Tailwind CSS and Framer Motion for smooth animations.
+
+### 📊 Deep Project Analytics
+- **Massive Language Support:** Automatically detects 369 programming languages across 904 file extensions.
+- **Rich Reporting:** Export your findings as raw JSON data or as beautifully styled PDF reports for stakeholder meetings.
+
+---
+
+## 🛠 Tech Stack
+
+CodeAutopsy is built with modern, high-performance technologies:
+
+| Layer | Technologies |
+|-------|--------------|
+| **Frontend** | React 19, Vite 8, Tailwind CSS v4, Framer Motion, Zustand (State Management), Recharts, Monaco Editor, Lucide Icons |
 | **Backend** | Python 3.10+, FastAPI, SQLAlchemy, GitPython |
-| **Analysis** | Semgrep (optional), Regex-based scanner (built-in) |
-| **AI** | Groq API (upcoming) |
-| **Database** | SQLite |
+| **Analysis Engine**| Built-in Regex Scanner, Semgrep (optional) |
+| **Artificial Intelligence** | Groq API |
+| **Database** | SQLite (Zero-config, ready to go) |
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
+
+Get CodeAutopsy up and running on your local machine in minutes.
 
 ### Prerequisites
-
-- **Python 3.10+** — [Download](https://www.python.org/downloads/)
-- **Node.js 18+** — [Download](https://nodejs.org/)
-- **Git** — [Download](https://git-scm.com/)
+Make sure you have the following installed:
+- **Python 3.10+**
+- **Node.js 18+**
+- **Git**
 
 ### 1. Clone the Repository
-
 ```bash
 git clone https://github.com/Sivanandhpp/CodeAutopsy.git
 cd CodeAutopsy
 ```
 
 ### 2. Backend Setup
+Navigate to the backend directory, set up your virtual environment, and install dependencies.
 
 ```bash
 cd backend
-
-# Create virtual environment
 python -m venv venv
 
-# Activate it
-# Windows:
+# Activate standard virtual environment
+# On Windows:
 .\venv\Scripts\activate
-# macOS/Linux:
+# On macOS/Linux:
 source venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
-
-# Create .env file (copy the example)
-cp .env.example .env
-# Or on Windows:
-copy .env.example .env
 ```
 
-Edit `backend/.env` with your keys:
-
+**Environment Variables**
+Create a `.env` file from the example:
+```bash
+cp .env.example .env
+```
+Populate `.env` with your keys:
 ```env
-# Required for AI features (Checkpoint 5)
+# Required for AI features
 GROQ_API_KEY=gsk_your_key_here
 
-# Optional — increases GitHub API rate limit
+# Optional: Increases GitHub API rate limit for large repos
 GITHUB_TOKEN=ghp_your_token_here
 
-# Database (default SQLite, works out of the box)
+# Database config (SQLite works automatically)
 DATABASE_URL=sqlite:///./data/codeautopsy.db
 
-# CORS
+# CORS configuration
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 
-Start the backend:
-
+**Start the API Server:**
 ```bash
 python -m uvicorn app.main:app --reload --port 8000
 ```
-
-You should see:
-```
-🔬 CodeAutopsy API is running!
-📊 Database: sqlite:///./data/codeautopsy.db
-```
+*You should see a message confirming the API is running and connected to the database.*
 
 ### 3. Frontend Setup
+Open a new terminal window, navigate to the frontend directory, and start the Vite dev server.
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
+The application will be live at: **`http://localhost:5173`**
 
-The frontend will be available at **http://localhost:5173**
-
-### 4. Try It Out
-
-1. Open http://localhost:5173
-2. Paste a GitHub URL (e.g. `https://github.com/pallets/flask`)
-3. Click **Analyze** and watch the real-time progress
-4. Explore the Results Dashboard — health score, issues, file tree
+### 4. Try It Out!
+1. Open your browser and navigate to `http://localhost:5173`.
+2. Enter any public GitHub URL (e.g., `https://github.com/pallets/flask`).
+3. Click **Analyze** and watch the SSE stream build your results in real-time.
+4. Explore the Dashboard, view the Health Score, and inspect code in the Monaco Editor.
 
 ---
 
-## Project Structure
-
-```
-CodeAutopsy/
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   └── routes/
-│   │   │       ├── analysis.py      # Analysis endpoints (POST/GET/SSE)
-│   │   │       └── health.py        # Health check endpoint
-│   │   ├── models/
-│   │   │   └── database.py          # SQLAlchemy models & DB setup
-│   │   ├── services/
-│   │   │   ├── git_service.py       # Repo cloning, file tree, language detection
-│   │   │   └── static_analyzer.py   # Semgrep + regex security scanning
-│   │   ├── utils/
-│   │   │   ├── languages.py         # 904 extension → language mappings
-│   │   │   └── progress.py          # SSE progress tracker
-│   │   ├── config.py                # App settings (env-based)
-│   │   └── main.py                  # FastAPI app entry point
-│   ├── requirements.txt
-│   └── .env
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── analysis/
-│   │   │   │   └── ResultsDashboard.jsx  # Analysis results UI
-│   │   │   ├── landing/                  # Landing page sections
-│   │   │   └── ui/                       # Reusable UI components
-│   │   ├── lib/
-│   │   │   ├── api.js                    # Axios API client
-│   │   │   └── analysisStore.js          # Zustand state management
-│   │   ├── pages/
-│   │   │   ├── LandingPage.jsx           # Home page
-│   │   │   └── AnalysisPage.jsx          # Analysis progress + results
-│   │   ├── App.jsx
-│   │   └── index.css                     # Global styles & design tokens
-│   ├── package.json
-│   └── vite.config.js
-│
-├── docs/
-│   └── banner.png
-└── README.md
-```
-
----
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check + DB status |
-| `POST` | `/api/analyze/github` | Start a new analysis (body: `{ "repo_url": "..." }`) |
-| `GET` | `/api/results/{id}` | Get analysis results |
-| `GET` | `/api/analyze/stream/{id}` | SSE stream of progress updates |
-| `GET` | `/api/files/{id}?path=...` | Read file from analyzed repo |
-| `GET` | `/api/archaeology/trace/{id}` | Trace a bug's origin in git |
-| `POST` | `/api/ai/analyze` | Get AI-powered explanation and code fix |
-| `GET` | `/api/report/{id}/json` | Export results as raw JSON |
-| `GET` | `/api/report/{id}/pdf` | Export results as styled PDF report |
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | ✅ | Database connection string (default: SQLite) |
-| `CORS_ORIGINS` | ✅ | Allowed frontend origins (comma-separated) |
-| `GROQ_API_KEY` | ❌ | Groq API key for AI features |
-| `GITHUB_TOKEN` | ❌ | GitHub PAT for higher rate limits |
-| `MAX_REPO_SIZE_MB` | ❌ | Max repo size to clone (default: 100) |
-| `MAX_ANALYSIS_PER_HOUR` | ❌ | Rate limit per IP (default: 5) |
-
----
-
-## Optional: Enhanced Analysis with Semgrep
-
-The built-in regex scanner covers 50+ common security patterns across 14 languages. For deeper analysis with 1000+ rules:
-
+## 🔌 Optional: Enhanced Analysis with Semgrep
+Want deeper security coverage? Install Semgrep globally in your environment. CodeAutopsy will automatically detect it and upgrade its scanning capabilities.
 ```bash
 pip install semgrep
 ```
 
-CodeAutopsy automatically detects and uses Semgrep when available, falling back to the regex scanner otherwise.
+---
+
+## 🌐 API Reference
+
+CodeAutopsy provides a robust REST API for custom integrations:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Check API and Database status |
+| `POST` | `/api/analyze/github` | Trigger a new repository analysis |
+| `GET` | `/api/analyze/stream/{id}` | Connect to SSE for real-time analysis progress |
+| `GET` | `/api/results/{id}` | Fetch completed analysis results and scores |
+| `GET` | `/api/files/{id}?path=...` | Read file contents from an analyzed repository |
+| `GET` | `/api/archaeology/trace/{id}`| Trace code history and git blame |
+| `POST` | `/api/ai/analyze` | Request AI-generated fixes and explanations |
+| `GET` | `/api/report/{id}/json` | Export full results as JSON |
+| `GET` | `/api/report/{id}/pdf` | Generate and download a PDF report |
 
 ---
 
-## Roadmap
+## 🛣 Roadmap
 
-- [x] **Checkpoint 1** — Project foundation, landing page, dark/light theme
-- [x] **Checkpoint 2** — GitHub integration, static analysis, results dashboard
-- [x] **Checkpoint 3** — Code Archaeology Engine (git blame, timeline visualization)
-- [x] **Checkpoint 4** — In-browser code editor with Monaco
-- [x] **Checkpoint 5** — AI-powered insights with Groq (fix suggestions, confidence scoring)
-- [x] **Checkpoint 6** — Polish, export reports, static analyzer expansion
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- [x] **v0.1:** Core foundation, landing page, responsive dark/light mode UI.
+- [x] **v0.2:** GitHub integration, built-in static analysis rules, Results Dashboard.
+- [x] **v0.3:** Code Archaeology Engine (Git blame, timeline evolution tracking).
+- [x] **v0.4:** In-browser code editing and exploration with Monaco.
+- [x] **v0.5:** AI Integration (Groq) for automated insights and fix suggestions.
+- [x] **v0.6:** PDF/JSON Exporting and Semgrep auto-detection integration.
+- [ ] **Upcoming:** Custom scanning rules, CI/CD pipeline integration, Docker support.
 
 ---
 
-## License
+## 🤝 Contributing
 
-This project is licensed under the MIT License.
+We welcome contributions! To get started:
+1. Fork the project.
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
 
 ---
 
-<p align="center">
-  Built with ❤️ by <a href="https://github.com/Sivanandhpp">Sivanandh P P</a>
-</p>
+## 📄 License & Credits
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+<div align="center">
+  <p>Built with ❤️ by <a href="https://github.com/Sivanandhpp">Sivanandh P P</a></p>
+</div>

@@ -1,18 +1,23 @@
 /**
  * Landing Page — Custom design with DotGrid, LiquidBlobs, and GlassInput
- * Preserves all analyze functionality from the original.
+ * Auth panel opens from login button.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { analyzeRepository } from '../lib/api';
 import useAnalysisStore from '../lib/analysisStore';
+import useAuthStore from '../lib/authStore';
+import AuthPanel from '../components/auth/AuthPanel';
 
 import DotGrid from '../components/landing/DotGrid';
 import LiquidBlobs from '../components/landing/LiquidBlobs';
 
 export default function LandingPage() {
+  const loginBtnRef = useRef(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const { isAuthenticated } = useAuthStore();
   const [repoUrl, setRepoUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -75,8 +80,13 @@ export default function LandingPage() {
             <span className="lp-logo-text">CodeAutopsy</span>
             <span className="lp-badge">BETA</span>
           </div>
-          <button className="lp-login-btn">Login</button>
+          <button ref={loginBtnRef} className="lp-login-btn" onClick={() => setShowAuth(true)}>
+            {isAuthenticated ? 'Dashboard' : 'Login'}
+          </button>
         </header>
+
+        {/* Auth Panel */}
+        <AuthPanel isOpen={showAuth} onClose={() => setShowAuth(false)} anchorRef={loginBtnRef} />
 
         {/* Main Hero */}
         <main className="lp-main">

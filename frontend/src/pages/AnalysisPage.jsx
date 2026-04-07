@@ -13,6 +13,7 @@ import ResultsDashboard from '../components/analysis/ResultsDashboard';
 
 import DotGrid from '../components/landing/DotGrid';
 import LiquidBlobs from '../components/landing/LiquidBlobs';
+void motion;
 
 // ─── Step → command definitions ────────────────────────────────────────────
 const STEP_COMMANDS = {
@@ -76,14 +77,20 @@ export default function AnalysisPage() {
   const [displayProgress, setDisplayProgress] = useState(10);
   const [currentStep, setCurrentStep] = useState('queued');
   const [error, setError] = useState(null);
-  const [isComplete, setIsComplete] = useState(false);
   const [termLines, setTermLines] = useState([]);
   const [repoUrl, setRepoUrl] = useState('');
   const eventSourceRef = useRef(null);
   const termEndRef = useRef(null);
   const addedStepsRef = useRef(new Set());
+  const terminalEventHandledRef = useRef(false);
 
-  const { analysisResult, setAnalysisResult, setAnalysisId } = useAnalysisStore();
+  const { 
+    analysisStatus, analysisResult, staticIssues, setAnalysisResult, setAnalysisId, reset,
+    handleStaticComplete, handleStackDetected,
+    handleAiSummaryStart, handleAiSummaryChunk, handleAiSummaryComplete,
+    handleAiSummaryUnavailable, handleAiSummaryError,
+    handleComplete, handleError
+  } = useAnalysisStore();
 
   // Smooth progress animation
   useEffect(() => {
@@ -102,14 +109,48 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    if (id) {
+    let cancelled = false;
+
+    if (analysisResult?.id && analysisResult.id !== id) {
+      reset();
+    }
+
+    async function hydrateAndStream() {
+      if (!id) return;
       setAnalysisId(id);
-      // Try to get repo URL from store
       const stored = sessionStorage.getItem('ca_repo_url');
       if (stored) setRepoUrl(stored);
-      startStreaming(id);
+
+      try {
+        const data = await getAnalysisResults(id);
+        if (cancelled) return;
+        setAnalysisResult(data);
+        if (data.repo_url) {
+          sessionStorage.setItem('ca_repo_url', data.repo_url);
+          setRepoUrl(data.repo_url);
+        }
+
+        if (data.status === 'complete') {
+          setProgress(100);
+          return;
+        }
+        if (data.status === 'failed' || data.status === 'cancelled') {
+          setError(data.error_message || 'Analysis failed');
+          return;
+        }
+
+        const shouldStream = ['queued', 'cloning', 'analyzing'].includes(data.status);
+        if (shouldStream) {
+          startStreaming(id);
+        }
+      } catch {
+        startStreaming(id);
+      }
     }
+
+    hydrateAndStream();
     return () => {
+      cancelled = true;
       if (eventSourceRef.current) eventSourceRef.current.close();
     };
   }, [id]);
@@ -140,67 +181,208 @@ export default function AnalysisPage() {
     });
   };
 
-  const startStreaming = (analysisId) => {
+  function startStreaming(analysisId) {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const eventSource = new EventSource(`${apiUrl}/api/analyze/stream/${analysisId}`);
     eventSourceRef.current = eventSource;
+    terminalEventHandledRef.current = false;
 
     // Seed the initial queued lines
     addStepLines('queued');
 
-    eventSource.onmessage = (event) => {
+    // ─── Named SSE event handlers (backend sends named events) ──────
+
+    // Generic progress events (cloning, analyzing, file_tree, etc.)
+    eventSource.addEventListener('status', (e) => {
       try {
-        const data = JSON.parse(event.data);
-        const newProgress = data.progress || 0;
-        const newStep = data.current_step || 'queued';
+        const data = JSON.parse(e.data);
+        setProgress(data.progress || 0);
 
-        setProgress(newProgress);
-        setCurrentStep(newStep);
+        // Map backend step names to our terminal step names
+        const stepMap = {
+          cloning: 'clone',
+          analyzing: data.step === 'file_tree' ? 'file_tree'
+            : data.step === 'static_analysis' ? 'static_analysis'
+            : 'static_analysis',
+          ai_scanning: 'scoring',
+        };
+        const mappedStep = stepMap[data.status] || currentStep;
+        setCurrentStep(mappedStep);
+        addStepLines(mappedStep);
 
-        // Grab repo URL from message if possible
-        if (data.repo_url) {
-          setRepoUrl(data.repo_url);
-          sessionStorage.setItem('ca_repo_url', data.repo_url);
+        // Dynamic terminal line for the message
+        if (data.message) {
+          setTermLines(prev => [...prev, {
+            text: `  ${data.message}`,
+            color: 'white',
+            id: `status-${Date.now()}`
+          }]);
         }
-
-        addStepLines(newStep, data.repo_url);
-
-        if (data.status === 'complete') {
-          eventSource.close();
-          setProgress(100);
-          addStepLines('complete', data.repo_url);
-          setTimeout(() => fetchResults(analysisId), 800);
-        } else if (data.status === 'failed') {
-          eventSource.close();
-          setError(data.message || 'Analysis failed');
-        }
-      } catch (e) {
-        console.error('SSE parse error:', e);
+      } catch (err) {
+        console.warn('[SSE] status parse error:', err);
       }
-    };
+    });
 
+    // Phase 1 complete — static analysis results
+    eventSource.addEventListener('static_complete', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setProgress(data.progress || 50);
+        setCurrentStep('static_analysis');
+        addStepLines('static_analysis');
+        setTermLines(prev => [...prev, {
+          text: `✓ Security scan: ${data.total_issues || 0} issues found, health ${data.health_score || '?'}/100`,
+          color: 'green',
+          id: `static-done-${Date.now()}`
+        }]);
+        handleStaticComplete(data);
+      } catch (err) {
+        console.warn('[SSE] static_complete parse error:', err);
+      }
+    });
+
+    // Stack detection
+    eventSource.addEventListener('stack_detected', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        const frameworks = data.frameworks?.length ? ` + ${data.frameworks.join(', ')}` : '';
+        setTermLines(prev => [...prev, {
+          text: `  Stack detected: ${data.language}${frameworks}`,
+          color: 'cyan',
+          id: `stack-${Date.now()}`
+        }]);
+        handleStackDetected(data);
+      } catch { /* ignore */ }
+    });
+
+    // AI summary starting
+    eventSource.addEventListener('ai_summary_start', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setCurrentStep('scoring');
+        addStepLines('scoring');
+        setTermLines(prev => [...prev, {
+          text: `  ${data.message || 'Generating AI summary of findings...'}`,
+          color: 'cyan',
+          id: `ai-start-${Date.now()}`
+        }]);
+        handleAiSummaryStart(data);
+      } catch { /* ignore */ }
+    });
+
+    // AI summary chunk
+    eventSource.addEventListener('ai_summary_chunk', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        handleAiSummaryChunk(data);
+      } catch { /* ignore */ }
+    });
+
+    // AI summary complete
+    eventSource.addEventListener('ai_summary_complete', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setTermLines(prev => [...prev, {
+          text: `✓ AI summary complete!`,
+          color: 'green',
+          id: `ai-done-${Date.now()}`
+        }]);
+        handleAiSummaryComplete(data);
+        if (data.status === 'failed') {
+          handleAiSummaryError({
+            message: 'AI summary unavailable. Static analysis results remain available.',
+            detail: data.message || 'AI summary unavailable.',
+          });
+        }
+      } catch { /* ignore */ }
+    });
+
+    // Ollama unavailable (graceful degradation)
+    eventSource.addEventListener('ollama_unavailable', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        handleAiSummaryUnavailable(data);
+        setTermLines(prev => [...prev, {
+          text: `⚠ ${data.message || 'AI model unavailable, skipping deep analysis'}`,
+          color: 'yellow',
+          id: `ai-skip-${Date.now()}`
+        }]);
+      } catch { /* ignore */ }
+    });
+
+    eventSource.addEventListener('ai_summary_error', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setTermLines(prev => [...prev, {
+          text: `AI warning: ${data.message || 'AI summary unavailable. Static analysis results remain available.'}`,
+          color: 'yellow',
+          id: `ai-error-${Date.now()}`
+        }]);
+        handleAiSummaryError(data);
+      } catch { /* ignore */ }
+    });
+
+    // Final completion
+    eventSource.addEventListener('complete', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setProgress(100);
+        setCurrentStep('complete');
+        addStepLines('complete');
+        setTermLines(prev => [...prev, {
+          text: `✓ ${data.message || 'Analysis complete!'}`,
+          color: 'green',
+          id: `complete-${Date.now()}`
+        }]);
+        handleComplete(data);
+      } catch { /* ignore */ }
+      terminalEventHandledRef.current = true;
+      eventSource.close();
+      setTimeout(() => fetchResults(analysisId), 800);
+    });
+
+    // Fatal error
+    eventSource.addEventListener('analysis_error', (e) => {
+      if (e.data) {
+        try {
+          const data = JSON.parse(e.data);
+          setError(data.message || 'Analysis failed');
+          handleError(data);
+        } catch { /* ignore */ }
+      }
+      terminalEventHandledRef.current = true;
+      eventSource.close();
+      fetchResults(analysisId);
+    });
+
+    // Native connection error (browser-level)
     eventSource.onerror = () => {
+      if (terminalEventHandledRef.current) {
+        return;
+      }
       eventSource.close();
       fetchResults(analysisId);
     };
-  };
+  }
 
-  const fetchResults = async (analysisId) => {
+  async function fetchResults(analysisId) {
     try {
       const data = await getAnalysisResults(analysisId);
       setAnalysisResult(data);
       if (data.status === 'complete') {
         setProgress(100);
-        setTimeout(() => setIsComplete(true), 600);
       } else if (data.status === 'failed') {
         setError(data.error_message || 'Analysis failed');
       } else {
         setTimeout(() => fetchResults(analysisId), 3000);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to fetch results. Please try again.');
     }
-  };
+  }
 
   const getProgressColor = (p) => {
     if (p >= 80) return '#10b981';
@@ -218,8 +400,22 @@ export default function AnalysisPage() {
     }
   };
 
-  // Error state
-  if (error) {
+  // Results state — show dashboard if we have static results OR if error occurred after Phase 1
+  const isCurrentAnalysis = analysisResult?.id ? analysisResult.id === id : true;
+  const hasPartialResults = isCurrentAnalysis && (
+    (Array.isArray(staticIssues) && staticIssues.length > 0) ||
+    (Array.isArray(analysisResult?.issues) && analysisResult.issues.length > 0)
+  );
+  const showDashboard = isCurrentAnalysis && (
+    ['static_done', 'ai_scanning', 'complete'].includes(analysisStatus) ||
+    (analysisStatus === 'error' && hasPartialResults)
+  );
+  if (showDashboard) {
+    return <ResultsDashboard analysisId={id} errorBanner={error} />;
+  }
+
+  // Pure error state (failed before any results)
+  if (error && !showDashboard) {
     return (
       <div style={styles.page}>
         <motion.div
@@ -234,11 +430,6 @@ export default function AnalysisPage() {
         </motion.div>
       </div>
     );
-  }
-
-  // Results state
-  if (isComplete) {
-    return <ResultsDashboard analysisId={id} />;
   }
 
   const progressColor = getProgressColor(displayProgress);
@@ -402,7 +593,7 @@ const STEP_LABELS = {
   clone: 'Clone',
   file_tree: 'Index',
   static_analysis: 'Scan',
-  scoring: 'AI Score',
+  scoring: 'AI Summary',
   complete: 'Report',
 };
 

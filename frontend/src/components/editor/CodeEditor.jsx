@@ -64,6 +64,7 @@ export default function CodeEditor({
   language = 'plaintext',
   issues = [],
   onLineClick,
+  onChange,
   isDark = true,
 }) {
   const editorRef = useRef(null);
@@ -98,17 +99,23 @@ export default function CodeEditor({
     const decorations = fileIssues.map(issue => {
       const severity = issue.severity || 'medium';
       const sevClass = {
+        blocker: 'squiggly-blocker',
         critical: 'squiggly-critical',
         high: 'squiggly-high',
         medium: 'squiggly-medium',
         low: 'squiggly-low',
+        info: 'squiggly-info',
+        trace: 'squiggly-trace',
       }[severity] || 'squiggly-medium';
 
       const glyphClass = {
+        blocker: 'glyph-blocker',
         critical: 'glyph-critical',
         high: 'glyph-high',
         medium: 'glyph-medium',
         low: 'glyph-low',
+        info: 'glyph-info',
+        trace: 'glyph-trace',
       }[severity] || 'glyph-medium';
 
       return {
@@ -119,7 +126,7 @@ export default function CodeEditor({
           glyphMarginClassName: glyphClass,
           hoverMessage: {
             value: [
-              `**${severity.toUpperCase()}** — ${issue.issue_type}`,
+              `**${severity.toUpperCase()}** — ${issue.defect_family || 'unknown'}`,
               '',
               issue.message,
               '',
@@ -130,10 +137,13 @@ export default function CodeEditor({
           },
           overviewRuler: {
             color: {
+              blocker: '#7f1d1d',
               critical: '#ef4444',
               high: '#f97316', 
               medium: '#eab308',
               low: '#06b6d4',
+              info: '#8b5cf6',
+              trace: '#64748b',
             }[severity] || '#eab308',
             position: monaco.editor.OverviewRulerLane.Right,
           },
@@ -169,10 +179,11 @@ export default function CodeEditor({
         height="100%"
         language={monacoLang}
         value={code}
+        onChange={onChange}
         theme={isDark ? 'vs-dark' : 'vs'}
         onMount={handleEditorMount}
         options={{
-          readOnly: true,
+          readOnly: false,
           minimap: { enabled: true },
           lineNumbers: 'on',
           scrollBeyondLastLine: false,
@@ -194,6 +205,10 @@ export default function CodeEditor({
           overflow: hidden;
         }
         /* Squiggly underline decorations */
+        .squiggly-blocker {
+          background: rgba(127, 29, 29, 0.1);
+          border-bottom: 2px wavy #7f1d1d;
+        }
         .squiggly-critical {
           background: rgba(239, 68, 68, 0.08);
           border-bottom: 2px wavy #ef4444;
@@ -210,11 +225,22 @@ export default function CodeEditor({
           background: rgba(6, 182, 212, 0.04);
           border-bottom: 2px wavy #06b6d4;
         }
+        .squiggly-info {
+          background: rgba(139, 92, 246, 0.05);
+          border-bottom: 2px wavy #8b5cf6;
+        }
+        .squiggly-trace {
+          background: rgba(100, 116, 139, 0.05);
+          border-bottom: 2px wavy #64748b;
+        }
         /* Glyph margin dots */
+        .glyph-blocker { background: #7f1d1d; border-radius: 50%; width: 8px !important; height: 8px !important; margin: 6px 4px; }
         .glyph-critical { background: #ef4444; border-radius: 50%; width: 8px !important; height: 8px !important; margin: 6px 4px; }
         .glyph-high { background: #f97316; border-radius: 50%; width: 8px !important; height: 8px !important; margin: 6px 4px; }
         .glyph-medium { background: #eab308; border-radius: 50%; width: 8px !important; height: 8px !important; margin: 6px 4px; }
         .glyph-low { background: #06b6d4; border-radius: 50%; width: 8px !important; height: 8px !important; margin: 6px 4px; }
+        .glyph-info { background: #8b5cf6; border-radius: 50%; width: 8px !important; height: 8px !important; margin: 6px 4px; }
+        .glyph-trace { background: #64748b; border-radius: 50%; width: 8px !important; height: 8px !important; margin: 6px 4px; }
       `}</style>
     </div>
   );

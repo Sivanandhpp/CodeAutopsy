@@ -1,28 +1,40 @@
 /**
- * Navbar — Simple scrollable navbar matching landing page style
- * Left: CodeAutopsy + BETA badge
- * Right: Theme toggle + Login button
+ * Navbar — Top navigation bar with auth state awareness
+ * Shows login button for guests, user avatar + dashboard link for authenticated users.
  */
 
-import { Link } from 'react-router-dom';
-import { Sun, Moon } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Sun, Moon, LogOut, LayoutDashboard, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useThemeStore from '../../lib/themeStore';
+import useAuthStore from '../../lib/authStore';
+import AuthPanel from '../auth/AuthPanel';
 
 export default function Navbar() {
   const { theme, toggleTheme } = useThemeStore();
+  const { isAuthenticated, user, logout } = useAuthStore();
+  const [showAuth, setShowAuth] = useState(false);
+  const loginBtnRef = useRef(null);
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   return (
     <nav className="ca-nav">
       <div className="ca-nav-inner">
         {/* Logo */}
-        <Link to="/" className="ca-nav-brand">
+        <Link to={isAuthenticated ? '/dashboard' : '/'} className="ca-nav-brand">
           <span className="ca-nav-logo">CodeAutopsy</span>
-          <span className="ca-nav-badge">BETA</span>
+          <span className="ca-nav-badge">v2.0</span>
         </Link>
 
         {/* Right Actions */}
         <div className="ca-nav-actions">
+          {/* Theme Toggle */}
           <motion.button
             className="ca-nav-theme"
             onClick={toggleTheme}
@@ -43,9 +55,49 @@ export default function Navbar() {
             </AnimatePresence>
           </motion.button>
 
-          <button className="ca-nav-login">Login</button>
+          {isAuthenticated ? (
+            /* Authenticated — show user info */
+            <>
+              {user?.is_admin && (
+                <Link to="/admin" className="ca-nav-admin" title="Admin Panel">
+                  <Shield size={16} />
+                </Link>
+              )}
+
+              <Link to="/dashboard" className="ca-nav-dashboard" title="Dashboard">
+                <LayoutDashboard size={16} />
+              </Link>
+
+              <div className="ca-nav-user">
+                <div className="ca-nav-avatar">
+                  {user?.username?.charAt(0).toUpperCase() || '?'}
+                </div>
+                <span className="ca-nav-username">{user?.username}</span>
+              </div>
+
+              <button className="ca-nav-logout" onClick={handleLogout} title="Sign out">
+                <LogOut size={14} />
+              </button>
+            </>
+          ) : (
+            /* Guest — show login button */
+            <button
+              ref={loginBtnRef}
+              className="ca-nav-login"
+              onClick={() => setShowAuth(true)}
+            >
+              Login
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Floating Auth Panel */}
+      <AuthPanel
+        isOpen={showAuth}
+        onClose={() => setShowAuth(false)}
+        anchorRef={loginBtnRef}
+      />
 
       <style>{`
         .ca-nav {
@@ -118,6 +170,73 @@ export default function Navbar() {
         }
         .ca-nav-login:hover {
           opacity: 0.85;
+        }
+
+        /* Authenticated user elements */
+        .ca-nav-dashboard,
+        .ca-nav-admin {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 18px;
+          border: 1px solid var(--ca-border);
+          background: var(--ca-bg-secondary);
+          color: var(--ca-text-muted);
+          text-decoration: none;
+          transition: all 0.15s;
+        }
+        .ca-nav-dashboard:hover,
+        .ca-nav-admin:hover {
+          border-color: var(--ca-primary);
+          color: var(--ca-primary);
+        }
+
+        .ca-nav-user {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .ca-nav-avatar {
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #6366f1, #4f46e5);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.8rem;
+          font-weight: 600;
+        }
+        .ca-nav-username {
+          font-size: 0.88rem;
+          color: var(--ca-text);
+          font-weight: 500;
+        }
+
+        .ca-nav-logout {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 30px;
+          height: 30px;
+          border-radius: 18px;
+          border: 1px solid var(--ca-border);
+          background: transparent;
+          color: var(--ca-text-muted);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .ca-nav-logout:hover {
+          border-color: #ef4444;
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.08);
+        }
+
+        @media (max-width: 480px) {
+          .ca-nav-username { display: none; }
         }
       `}</style>
     </nav>

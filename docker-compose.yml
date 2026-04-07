@@ -1,0 +1,101 @@
+# ─────────────────────────────────────────────────────────────
+# CodeAutopsy — Docker Compose (Development)
+# Runs all 4 services with hot-reload for backend/frontend
+# ─────────────────────────────────────────────────────────────
+
+services:
+  # ─── PostgreSQL Database ───────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: codeautopsy-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: codeautopsy
+      POSTGRES_USER: codeautopsy
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-codeautopsy_dev_2024}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codeautopsy -d codeautopsy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - codeautopsy-net
+
+  # ─── FastAPI Backend ───────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: codeautopsy-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://codeautopsy:${DB_PASSWORD:-codeautopsy_dev_2024}@db:5432/codeautopsy
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:80"
+    ports:
+      - "8000:8000"
+    user: "0"
+    volumes:
+      - ./backend:/app
+      - repos_data:/repos_data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    # Override CMD for dev mode with hot-reload (single worker)
+    command: >
+      sh -c "
+        mkdir -p /repos_data;
+        chown -R appuser:appuser /repos_data;
+        exec su -s /bin/sh appuser -c 'uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app'
+      "
+    networks:
+      - codeautopsy-net
+
+  # ─── Vite Frontend (Dev Mode) ──────────────────────────────
+  frontend:
+    image: node:20-alpine
+    container_name: codeautopsy-frontend
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install --no-fund --no-audit && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - codeautopsy-net
+
+
+# ─── Persistent Volumes ─────────────────────────────────────
+volumes:
+  pgdata:
+    name: codeautopsy-pgdata
+  repos_data:
+    name: codeautopsy-repos
+
+
+# ─── Network ────────────────────────────────────────────────
+networks:
+  codeautopsy-net:
+    name: codeautopsy-network
+    driver: bridge

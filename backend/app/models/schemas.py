@@ -1,23 +1,201 @@
 """
 CodeAutopsy Pydantic Schemas
+==============================
 Request/Response models for all API endpoints.
+Covers: Auth, Users, Projects, Analysis, Archaeology, AI, Reports.
 """
 
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional
-from datetime import datetime
 import re
+from datetime import datetime
+from typing import Optional, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field, field_validator, EmailStr
 
 
-# ─── Analysis Schemas ─────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════
+# AUTH SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
+
+class EmailCheckRequest(BaseModel):
+    """Check if an email is already registered."""
+    email: EmailStr
+
+
+class EmailCheckResponse(BaseModel):
+    exists: bool
+    message: str = ""
+
+
+class OTPSendRequest(BaseModel):
+    """Request to send a 6-digit OTP to an email."""
+    email: EmailStr
+
+
+class OTPSendResponse(BaseModel):
+    message: str
+    expires_in_minutes: int = 10
+
+
+class OTPVerifyRequest(BaseModel):
+    """Verify the 6-digit OTP code."""
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6)
+
+
+class OTPVerifyResponse(BaseModel):
+    """Returns a temporary token used for registration."""
+    verified: bool
+    temp_token: str = ""
+    message: str = ""
+
+
+class RegisterRequest(BaseModel):
+    """Create account after OTP verification."""
+    email: EmailStr
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8, max_length=128)
+    temp_token: str  # From OTP verification
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError("Username can only contain letters, numbers, hyphens, and underscores")
+        return v.strip()
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
+
+
+class LoginRequest(BaseModel):
+    """Email + password login."""
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    """JWT access token response."""
+    access_token: str
+    token_type: str = "bearer"
+    user: "UserResponse"
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+# ═════════════════════════════════════════════════════════════
+# USER SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
+
+class UserResponse(BaseModel):
+    """Public user information."""
+    id: UUID
+    username: str
+    email: str
+    is_admin: bool = False
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserSearchResult(BaseModel):
+    id: UUID
+    username: str
+    email: str
+
+    class Config:
+        from_attributes = True
+
+
+class UserSearchResponse(BaseModel):
+    users: list[UserSearchResult] = []
+    total: int = 0
+
+
+# ═════════════════════════════════════════════════════════════
+# PROJECT SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
+
+class ProjectCreateRequest(BaseModel):
+    repo_url: str = Field(..., description="GitHub repository URL")
+    description: Optional[str] = None
+
+    @field_validator("repo_url")
+    @classmethod
+    def validate_github_url(cls, v: str) -> str:
+        pattern = r'^https?://github\.com/[\w.-]+/[\w.-]+/?$'
+        if not re.match(pattern, v.strip().rstrip('.git')):
+            raise ValueError("Invalid GitHub URL. Format: https://github.com/owner/repo")
+        return v.strip().rstrip('/')
+
+
+class CollaboratorAddRequest(BaseModel):
+    username: str
+    role: str = Field(default="viewer", pattern=r"^(editor|viewer)$")
+
+
+class CollaboratorResponse(BaseModel):
+    user_id: UUID
+    username: str
+    email: str
+    role: str
+    added_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectResponse(BaseModel):
+    id: UUID
+    repo_url: str
+    repo_name: Optional[str] = None
+    description: Optional[str] = None
+    last_commit_sha: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    role: Optional[str] = None                      # Current user's role
+    collaborators: list[CollaboratorResponse] = []
+    latest_analysis: Optional["AnalysisResultResponse"] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectResponse] = []
+    total: int = 0
+
+
+# ═════════════════════════════════════════════════════════════
+# ANALYSIS SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
 
 class AnalyzeRequest(BaseModel):
     """Request to analyze a GitHub repository."""
     repo_url: str = Field(..., description="GitHub repository URL")
-    
+    project_id: Optional[UUID] = None  # Optional: link to existing project
+    force: bool = False
+
     @field_validator("repo_url")
     @classmethod
-    def validate_github_url(cls, v):
+    def validate_github_url(cls, v: str) -> str:
         pattern = r'^https?://github\.com/[\w.-]+/[\w.-]+/?$'
         if not re.match(pattern, v.strip().rstrip('.git')):
             raise ValueError("Invalid GitHub URL. Format: https://github.com/owner/repo")
@@ -27,6 +205,7 @@ class AnalyzeRequest(BaseModel):
 class AnalyzeResponse(BaseModel):
     """Response after starting an analysis."""
     analysis_id: str
+    project_id: Optional[UUID] = None
     status: str
     message: str
 
@@ -38,12 +217,31 @@ class IssueDetail(BaseModel):
     line_number: int
     end_line: Optional[int] = None
     column: Optional[int] = None
-    issue_type: str
-    severity: str  # critical, high, medium, low
+    rule_id: str
+    defect_family: str
+    severity: str  # trace, info, low, medium, high, critical, blocker
     message: str
+    fix_hint: Optional[str] = None
+    cwe_id: Optional[str] = None
+    owasp_ref: Optional[str] = None
     code_snippet: str = ""
-    rule_id: Optional[str] = None
-    category: Optional[str] = None
+    engine_source: Optional[str] = None
+    origin_author_name: Optional[str] = None
+    origin_author_email: Optional[str] = None
+    origin_author: Optional[str] = None
+    origin_commit: Optional[str] = None
+    origin_date: Optional[str] = None
+
+
+class OllamaFinding(BaseModel):
+    """A single finding from local AI analysis."""
+    file_path: str
+    type: str                     # bug, vulnerability, performance, code_smell
+    severity: str                 # critical, high, medium, low
+    line: Optional[int] = None
+    description: str
+    fix: str = ""
+    category: str = ""
 
 
 class FileInfo(BaseModel):
@@ -59,8 +257,10 @@ class FileInfo(BaseModel):
 class AnalysisResultResponse(BaseModel):
     """Full analysis results."""
     id: str
+    project_id: Optional[UUID] = None
     repo_url: str
     repo_name: Optional[str] = None
+    clone_path: Optional[str] = None
     status: str
     health_score: Optional[int] = None
     total_issues: int = 0
@@ -69,34 +269,111 @@ class AnalysisResultResponse(BaseModel):
     languages: dict = {}
     issues: list[IssueDetail] = []
     file_tree: list = []
+    ollama_findings: list[OllamaFinding] = []
+    contributor_stats: dict = {}
+    ai_summary: Optional[str] = None
     error_message: Optional[str] = None
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
 
+    class Config:
+        from_attributes = True
 
-# ─── Archaeology Schemas ──────────────────────────────────────
+
+# ═════════════════════════════════════════════════════════════
+# RULES SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
+
+SeverityTier = Literal[
+    "trace", "info", "low", "medium", "high", "critical", "blocker"
+]
+
+DefectFamily = Literal[
+    "injection",
+    "auth",
+    "crypto",
+    "secrets",
+    "xss",
+    "path_traversal",
+    "deserialization",
+    "ssrf",
+    "reliability",
+    "maintainability",
+    "best_practice",
+    "supply_chain",
+]
+
+MatchType = Literal["regex_line", "regex_multiline", "ast_semgrep"]
+
+
+class RuleBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    language: str = "any"
+    defect_family: DefectFamily
+    severity: SeverityTier
+    pattern: str
+    match_type: MatchType
+    message: str
+    fix_hint: Optional[str] = None
+    cwe_id: Optional[str] = None
+    owasp_ref: Optional[str] = None
+    is_active: bool = True
+
+
+class RuleCreate(RuleBase):
+    rule_id: str
+
+
+class RuleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    language: Optional[str] = None
+    defect_family: Optional[DefectFamily] = None
+    severity: Optional[SeverityTier] = None
+    pattern: Optional[str] = None
+    match_type: Optional[MatchType] = None
+    message: Optional[str] = None
+    fix_hint: Optional[str] = None
+    cwe_id: Optional[str] = None
+    owasp_ref: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class RuleResponse(RuleBase):
+    id: UUID
+    rule_id: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ═════════════════════════════════════════════════════════════
+# ARCHAEOLOGY SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
 
 class TraceRequest(BaseModel):
-    """Request to trace bug origin."""
     analysis_id: str
     file_path: str
     line_number: int
 
 
 class CommitInfo(BaseModel):
-    """Git commit metadata."""
     hash: str
-    author: str  # anonymized
+    author: str
     date: str
     message: str
-    change_type: str = "modification"  # introduction, modification, refactor
+    change_type: str = "modification"
     insertions: int = 0
     deletions: int = 0
     diff_snippet: str = ""
 
 
 class TraceResponse(BaseModel):
-    """Bug origin trace result."""
     origin_commit: CommitInfo
     evolution_chain: list[CommitInfo] = []
     total_commits: int = 0
@@ -105,14 +382,12 @@ class TraceResponse(BaseModel):
 
 
 class TimelineRequest(BaseModel):
-    """Request for file commit timeline."""
     analysis_id: str
     file_path: str
     max_commits: int = 50
 
 
 class TimelineResponse(BaseModel):
-    """Commit timeline for a file."""
     commits: list[CommitInfo] = []
     total_commits: int = 0
     total_authors: int = 0
@@ -122,13 +397,11 @@ class TimelineResponse(BaseModel):
 
 
 class BlameRequest(BaseModel):
-    """Request for file blame data."""
     analysis_id: str
     file_path: str
 
 
 class BlameLineInfo(BaseModel):
-    """Blame data for a single line."""
     line_number: int
     author: str
     commit_hash: str
@@ -137,7 +410,6 @@ class BlameLineInfo(BaseModel):
 
 
 class AuthorContribution(BaseModel):
-    """Author contribution stats."""
     author: str
     total_lines: int
     commit_count: int
@@ -145,19 +417,20 @@ class AuthorContribution(BaseModel):
 
 
 class BlameResponse(BaseModel):
-    """Blame data for a file."""
     lines: list[BlameLineInfo] = []
     authors: list[AuthorContribution] = []
     total_lines: int = 0
     file_path: str
 
 
-# ─── AI Analysis Schemas ──────────────────────────────────────
+# ═════════════════════════════════════════════════════════════
+# AI SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
 
 class AIAnalyzeRequest(BaseModel):
-    """Request for AI analysis of a code issue."""
     code_snippet: str
-    issue_type: str
+    defect_family: str
     language: str = "python"
     file_path: Optional[str] = None
     line_number: Optional[int] = None
@@ -166,7 +439,6 @@ class AIAnalyzeRequest(BaseModel):
 
 
 class AIAnalyzeResponse(BaseModel):
-    """AI analysis result."""
     root_cause: str
     fix_strategy: str
     code_patch: str
@@ -175,21 +447,107 @@ class AIAnalyzeResponse(BaseModel):
     cached: bool = False
 
 
-# ─── Health Check ─────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════
+# HEALTH & SSE SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
 
 class HealthResponse(BaseModel):
-    """Health check response."""
     status: str = "healthy"
-    version: str = "1.0.0"
+    version: str = "2.0.0"
     database: str = "connected"
+    ollama: str = "unknown"
 
-
-# ─── SSE Progress ─────────────────────────────────────────────
 
 class ProgressUpdate(BaseModel):
-    """Server-Sent Event progress update."""
     analysis_id: str
     status: str
-    progress: int = 0  # 0-100
+    progress: int = 0
     message: str = ""
     current_step: str = ""
+
+
+# ═════════════════════════════════════════════════════════════
+# ADMIN SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
+
+class AdminProjectBase(BaseModel):
+    id: UUID
+    repo_url: str
+    repo_name: Optional[str] = None
+
+
+class AdminUserResponse(BaseModel):
+    """Admin view of a user with storage and project stats."""
+    id: UUID
+    username: str
+    email: str
+    is_admin: bool
+    created_at: Optional[datetime] = None
+    repo_count: int = 0
+    storage_used_bytes: int = 0
+    projects: list[AdminProjectBase] = []
+
+    class Config:
+        from_attributes = True
+
+
+class AdminUserListResponse(BaseModel):
+    users: list[AdminUserResponse] = []
+    total: int = 0
+
+
+class AdminRepoUserBase(BaseModel):
+    id: UUID
+    username: str
+    email: str
+
+
+class AdminRepoResponse(BaseModel):
+    """Admin view of a project/repo with storage and user details."""
+    id: UUID
+    repo_url: str
+    repo_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    storage_used_bytes: int = 0
+    last_analyzed_at: Optional[datetime] = None
+    total_issues: int = 0
+    users: list[AdminRepoUserBase] = []
+
+    class Config:
+        from_attributes = True
+
+
+class AdminRepoListResponse(BaseModel):
+    repos: list[AdminRepoResponse] = []
+    total: int = 0
+
+
+class AdminStatsResponse(BaseModel):
+    """Global system stats."""
+    total_users: int = 0
+    total_repos: int = 0
+    total_analyses: int = 0
+    total_storage_bytes: int = 0
+
+
+class AdminAuditLogResponse(BaseModel):
+    """Single audit log entry."""
+    id: UUID
+    admin_id: Optional[UUID] = None
+    admin_username: Optional[str] = None
+    action: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    details: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AdminAuditLogListResponse(BaseModel):
+    logs: list[AdminAuditLogResponse] = []
+    total: int = 0

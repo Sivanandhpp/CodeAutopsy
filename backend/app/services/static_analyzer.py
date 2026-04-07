@@ -1,45 +1,52 @@
-"""
+﻿"""
 Static Analyzer Service
-Wraps Semgrep for security vulnerability detection and provides
-a fallback regex-based scanner when Semgrep is not available.
+Runs DB-driven static analysis using pluggable engines.
 """
 
-import json
-import subprocess
-import os
-import re
-import uuid
 import hashlib
-from pathlib import Path
+import logging
+
+from sqlalchemy import select
+
+from app.models.analysis_rule import AnalysisRule
+from app.services.analysis_engines import EngineRegistry, RegexEngine, SemgrepEngine
+
+logger = logging.getLogger(__name__)
 
 
-# ─── Severity Scoring ─────────────────────────────────────────
+# â”€â”€â”€ Severity Scoring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 SEVERITY_WEIGHTS = {
-    'critical': 15,
-    'high': 10,
-    'medium': 5,
-    'low': 2,
+    'trace': 0,
     'info': 1,
+    'low': 2,
+    'medium': 5,
+    'high': 10,
+    'critical': 15,
+    'blocker': 25,
 }
 
-# High-impact issue types get extra penalty
-HIGH_IMPACT_TYPES = {
-    'sql-injection', 'xss', 'command-injection', 'path-traversal',
-    'ssrf', 'insecure-deserialization', 'remote-code-execution',
+# High-impact defect families get extra penalty
+HIGH_IMPACT_FAMILIES = {
+    'injection', 'path_traversal', 'deserialization', 'ssrf',
+}
+
+SCANNABLE_LANGUAGES = {
+    'python', 'javascript', 'typescript', 'java', 'go', 'ruby', 'php',
+    'c', 'c++', 'c#', 'rust', 'kotlin', 'swift', 'shell',
 }
 
 
-# ─── Fallback Regex Patterns ──────────────────────────────────
-# Used when Semgrep is not installed — expanded to 50+ rules
+# --- Legacy Regex Patterns (migrated to DB) ---
+# Kept for seed script compatibility until migration is verified.
 
 REGEX_RULES = [
-    # ═══════════════════════════════════════════════════════════════
-    # CRITICAL — Remote Code Execution, Injection, etc.
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # CRITICAL â€” Remote Code Execution, Injection, etc.
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     {
         'id': 'command-injection',
-        'pattern': r'(?i)(os\.system|subprocess\.call|subprocess\.Popen|child_process\.exec|Runtime\.getRuntime\(\)\.exec)\s*\(.*[\+f"\{]',
+        'pattern': r'(?i)(os\.system|subprocess\.call|subprocess\.Popen|subprocess\.run|child_process\.exec|Runtime\.getRuntime\(\)\.exec)\s*\(.*[\+f"\{]',
         'message': 'Potential command injection: user input in system command',
         'severity': 'critical',
         'category': 'security',
@@ -56,7 +63,7 @@ REGEX_RULES = [
     {
         'id': 'sql-injection-concatenation',
         'pattern': r'(?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s+.*\"\s*\+\s*\w+',
-        'message': 'SQL query built with string concatenation — use parameterized queries',
+        'message': 'SQL query built with string concatenation â€” use parameterized queries',
         'severity': 'critical',
         'category': 'security',
         'languages': ['python', 'javascript', 'java', 'php', 'ruby', 'c#', 'go'],
@@ -80,7 +87,7 @@ REGEX_RULES = [
     {
         'id': 'jwt-no-verify',
         'pattern': r'(?i)jwt\.(decode|verify).*verify\s*=\s*false',
-        'message': 'JWT verification disabled — tokens are not validated',
+        'message': 'JWT verification disabled â€” tokens are not validated',
         'severity': 'critical',
         'category': 'security',
         'languages': ['python', 'javascript'],
@@ -88,7 +95,7 @@ REGEX_RULES = [
     {
         'id': 'insecure-deserialization',
         'pattern': r'(?i)(pickle\.loads?|yaml\.load\s*\((?!.*Loader)|unserialize|Marshal\.load|ObjectInputStream)',
-        'message': 'Insecure deserialization — can lead to remote code execution',
+        'message': 'Insecure deserialization â€” can lead to remote code execution',
         'severity': 'critical',
         'category': 'security',
         'languages': ['python', 'javascript', 'java', 'ruby', 'php'],
@@ -96,19 +103,19 @@ REGEX_RULES = [
     {
         'id': 'xxe-vulnerability',
         'pattern': r'(?i)(XMLParser|etree\.parse|SAXParser|DocumentBuilder).*(?!.*disable.*external)',
-        'message': 'Potential XXE (XML External Entity) vulnerability — disable external entities',
+        'message': 'Potential XXE (XML External Entity) vulnerability â€” disable external entities',
         'severity': 'critical',
         'category': 'security',
         'languages': ['python', 'java', 'php', 'c#'],
     },
 
-    # ═══════════════════════════════════════════════════════════════
-    # HIGH — Secrets, Auth, Crypto, Injection
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # HIGH â€” Secrets, Auth, Crypto, Injection
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     {
         'id': 'hardcoded-secret',
         'pattern': r'(?i)(password|secret|api_key|apikey|token|access_key|private_key|secret_key)\s*=\s*["\'][^"\']{8,}["\']',
-        'message': 'Potential hardcoded secret or credential — use environment variables',
+        'message': 'Potential hardcoded secret or credential â€” use environment variables',
         'severity': 'high',
         'category': 'security',
         'languages': ['python', 'javascript', 'typescript', 'java', 'go', 'ruby', 'php', 'kotlin', 'swift', 'c#', 'rust'],
@@ -116,7 +123,7 @@ REGEX_RULES = [
     {
         'id': 'hardcoded-ip',
         'pattern': r'["\'](\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})["\']',
-        'message': 'Hardcoded IP address found — use configuration or DNS',
+        'message': 'Hardcoded IP address found â€” use configuration or DNS',
         'severity': 'medium',
         'category': 'best-practice',
         'languages': ['python', 'javascript', 'typescript', 'java', 'go', 'ruby', 'php', 'c', 'c++'],
@@ -156,7 +163,7 @@ REGEX_RULES = [
     {
         'id': 'ssrf',
         'pattern': r'(?i)(requests\.get|fetch|urllib\.request|http\.get|axios\.get|HttpClient)\s*\(.*\+.*(params|query|body|args|req\.|request\.)',
-        'message': 'Potential SSRF — user input in outbound HTTP request URL',
+        'message': 'Potential SSRF â€” user input in outbound HTTP request URL',
         'severity': 'high',
         'category': 'security',
         'languages': ['python', 'javascript', 'java', 'go', 'ruby', 'php'],
@@ -164,7 +171,7 @@ REGEX_RULES = [
     {
         'id': 'insecure-hash',
         'pattern': r'(?i)(md5|sha1)\s*\(',
-        'message': 'Use of weak cryptographic hash (MD5/SHA1) — use SHA-256 or bcrypt',
+        'message': 'Use of weak cryptographic hash (MD5/SHA1) â€” use SHA-256 or bcrypt',
         'severity': 'high',
         'category': 'security',
         'languages': ['python', 'javascript', 'java', 'php', 'ruby', 'go', 'c', 'c++'],
@@ -172,7 +179,7 @@ REGEX_RULES = [
     {
         'id': 'insecure-random',
         'pattern': r'(?i)\brandom\.(random|randint|choice|randrange)\b',
-        'message': 'Use of non-cryptographic random — use secrets module for security-sensitive ops',
+        'message': 'Use of non-cryptographic random â€” use secrets module for security-sensitive ops',
         'severity': 'high',
         'category': 'security',
         'languages': ['python'],
@@ -180,7 +187,7 @@ REGEX_RULES = [
     {
         'id': 'insecure-random-js',
         'pattern': r'Math\.random\s*\(\s*\)',
-        'message': 'Math.random() is not cryptographically secure — use crypto.getRandomValues()',
+        'message': 'Math.random() is not cryptographically secure â€” use crypto.getRandomValues()',
         'severity': 'high',
         'category': 'security',
         'languages': ['javascript', 'typescript'],
@@ -188,7 +195,7 @@ REGEX_RULES = [
     {
         'id': 'prototype-pollution',
         'pattern': r'(?i)(Object\.assign|__proto__|constructor\s*\[)',
-        'message': 'Potential prototype pollution — validate input object keys',
+        'message': 'Potential prototype pollution â€” validate input object keys',
         'severity': 'high',
         'category': 'security',
         'languages': ['javascript', 'typescript'],
@@ -204,7 +211,7 @@ REGEX_RULES = [
     {
         'id': 'cors-wildcard',
         'pattern': r'(?i)(access-control-allow-origin|cors).*\*',
-        'message': 'CORS wildcard (*) allows any origin — may expose sensitive data',
+        'message': 'CORS wildcard (*) allows any origin â€” may expose sensitive data',
         'severity': 'high',
         'category': 'security',
         'languages': ['python', 'javascript', 'java', 'go', 'ruby', 'php'],
@@ -220,19 +227,19 @@ REGEX_RULES = [
     {
         'id': 'sensitive-data-logging',
         'pattern': r'(?i)(log|print|console\.log|logger)\s*\(.*(?:password|token|secret|credit.?card|ssn)',
-        'message': 'Sensitive data may be logged — mask credentials before logging',
+        'message': 'Sensitive data may be logged â€” mask credentials before logging',
         'severity': 'high',
         'category': 'security',
         'languages': ['python', 'javascript', 'typescript', 'java', 'go', 'ruby', 'php'],
     },
 
-    # ═══════════════════════════════════════════════════════════════
-    # MEDIUM — Reliability, Robustness, Code Smell
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # MEDIUM â€” Reliability, Robustness, Code Smell
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     {
         'id': 'null-pointer',
         'pattern': r'(?i)(\w+)\.(length|size|count|trim|split|strip|upper|lower|replace|append|extend|keys|values|items)\s*\(',
-        'message': 'Potential null/None pointer dereference — add null check before method call',
+        'message': 'Potential null/None pointer dereference â€” add null check before method call',
         'severity': 'medium',
         'category': 'reliability',
         'languages': [],  # too noisy as-is, we handle this differently below
@@ -240,23 +247,23 @@ REGEX_RULES = [
     {
         'id': 'null-dereference-pattern',
         'pattern': r'(?i)(result|response|data|user|obj|record|item|row|node)\s*\[\s*["\']',
-        'message': 'Accessing property on potentially null variable — add null guard',
+        'message': 'Accessing property on potentially null variable â€” add null guard',
         'severity': 'low',
         'category': 'reliability',
-        'languages': [],  # disabled — too many false positives
+        'languages': [],  # disabled â€” too many false positives
     },
     {
         'id': 'division-by-zero',
         'pattern': r'(?i)\b\w+\s*/\s*(?:\w+\s*)(?:#|//|/\*)?$',
-        'message': 'Potential division by zero — add zero-check before dividing',
+        'message': 'Potential division by zero â€” add zero-check before dividing',
         'severity': 'medium',
         'category': 'reliability',
-        'languages': [],  # disabled — regex too imprecise
+        'languages': [],  # disabled â€” regex too imprecise
     },
     {
         'id': 'unchecked-division',
         'pattern': r'(?i)(\s/\s+(?:len|count|size|total|num)\s*\()',
-        'message': 'Division by result of len/count/size — may be zero for empty collections',
+        'message': 'Division by result of len/count/size â€” may be zero for empty collections',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['python', 'javascript', 'java', 'go', 'ruby'],
@@ -264,7 +271,7 @@ REGEX_RULES = [
     {
         'id': 'empty-except',
         'pattern': r'except\s*:\s*\n\s*(pass|\.\.\.)',
-        'message': 'Empty except clause silently catches all exceptions — handle or log errors',
+        'message': 'Empty except clause silently catches all exceptions â€” handle or log errors',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['python'],
@@ -280,7 +287,7 @@ REGEX_RULES = [
     {
         'id': 'empty-catch-js',
         'pattern': r'catch\s*\([^)]*\)\s*\{\s*\}',
-        'message': 'Empty catch block silently swallows errors — log or handle the exception',
+        'message': 'Empty catch block silently swallows errors â€” log or handle the exception',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['javascript', 'typescript', 'java', 'c#', 'kotlin'],
@@ -288,7 +295,7 @@ REGEX_RULES = [
     {
         'id': 'debug-enabled',
         'pattern': r'(?i)debug\s*=\s*true',
-        'message': 'Debug mode enabled — should be disabled in production',
+        'message': 'Debug mode enabled â€” should be disabled in production',
         'severity': 'medium',
         'category': 'best-practice',
         'languages': ['python', 'javascript', 'java', 'php', 'ruby', 'go'],
@@ -296,7 +303,7 @@ REGEX_RULES = [
     {
         'id': 'http-not-https',
         'pattern': r'["\']http://(?!localhost|127\.0\.0\.1|0\.0\.0\.0)',
-        'message': 'Insecure HTTP URL — use HTTPS for external connections',
+        'message': 'Insecure HTTP URL â€” use HTTPS for external connections',
         'severity': 'medium',
         'category': 'security',
         'languages': ['python', 'javascript', 'typescript', 'java', 'go', 'ruby', 'php', 'c#', 'kotlin', 'swift'],
@@ -304,7 +311,7 @@ REGEX_RULES = [
     {
         'id': 'disabled-ssl-verify',
         'pattern': r'(?i)(verify\s*=\s*false|ssl_verify\s*=\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*["\']0|InsecureSkipVerify:\s*true)',
-        'message': 'SSL/TLS certificate verification disabled — vulnerable to MITM attacks',
+        'message': 'SSL/TLS certificate verification disabled â€” vulnerable to MITM attacks',
         'severity': 'high',
         'category': 'security',
         'languages': ['python', 'javascript', 'go', 'java', 'ruby'],
@@ -312,7 +319,7 @@ REGEX_RULES = [
     {
         'id': 'assert-in-production',
         'pattern': r'^\s*assert\s+',
-        'message': 'Assert statements are stripped in optimized mode — use proper validation',
+        'message': 'Assert statements are stripped in optimized mode â€” use proper validation',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['python'],
@@ -320,7 +327,7 @@ REGEX_RULES = [
     {
         'id': 'mutable-default-arg',
         'pattern': r'def\s+\w+\s*\([^)]*=\s*(\[\]|\{\}|set\(\))',
-        'message': 'Mutable default argument — shared across all calls (use None instead)',
+        'message': 'Mutable default argument â€” shared across all calls (use None instead)',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['python'],
@@ -328,7 +335,7 @@ REGEX_RULES = [
     {
         'id': 'global-variable',
         'pattern': r'^\s*global\s+\w+',
-        'message': 'Global variable usage — makes code harder to test and maintain',
+        'message': 'Global variable usage â€” makes code harder to test and maintain',
         'severity': 'low',
         'category': 'maintainability',
         'languages': ['python'],
@@ -344,7 +351,7 @@ REGEX_RULES = [
     {
         'id': 'no-timeout-request',
         'pattern': r'(?i)(requests\.(get|post|put|delete|patch)|fetch|axios\.(get|post))\s*\([^)]*\)(?!.*timeout)',
-        'message': 'HTTP request without timeout — may hang indefinitely',
+        'message': 'HTTP request without timeout â€” may hang indefinitely',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['python'],
@@ -352,7 +359,7 @@ REGEX_RULES = [
     {
         'id': 'file-not-closed',
         'pattern': r'(?i)(\w+)\s*=\s*open\s*\((?!.*with\s)',
-        'message': 'File opened without "with" statement — may not be properly closed',
+        'message': 'File opened without "with" statement â€” may not be properly closed',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['python'],
@@ -360,7 +367,7 @@ REGEX_RULES = [
     {
         'id': 'insecure-file-permissions',
         'pattern': r'(?i)(chmod|os\.chmod)\s*\(.*0o?777',
-        'message': 'World-writable file permissions (777) — use restrictive permissions',
+        'message': 'World-writable file permissions (777) â€” use restrictive permissions',
         'severity': 'high',
         'category': 'security',
         'languages': ['python', 'ruby', 'shell'],
@@ -368,7 +375,7 @@ REGEX_RULES = [
     {
         'id': 'race-condition',
         'pattern': r'(?i)if\s+(os\.path\.exists|os\.path\.isfile|os\.path\.isdir)\s*\(.*\)\s*:',
-        'message': 'TOCTOU race condition — file may change between check and use',
+        'message': 'TOCTOU race condition â€” file may change between check and use',
         'severity': 'medium',
         'category': 'security',
         'languages': ['python'],
@@ -376,7 +383,7 @@ REGEX_RULES = [
     {
         'id': 'unvalidated-redirect',
         'pattern': r'(?i)(redirect|res\.redirect|response\.redirect)\s*\(\s*(req\.|request\.|params|args)',
-        'message': 'Unvalidated redirect with user input — validate against whitelist',
+        'message': 'Unvalidated redirect with user input â€” validate against whitelist',
         'severity': 'high',
         'category': 'security',
         'languages': ['python', 'javascript', 'ruby', 'java', 'php'],
@@ -384,7 +391,7 @@ REGEX_RULES = [
     {
         'id': 'template-injection',
         'pattern': r'(?i)(render_template_string|Template\s*\().*(request\.|req\.|params)',
-        'message': 'Potential Server-Side Template Injection (SSTI) — never pass user input to templates',
+        'message': 'Potential Server-Side Template Injection (SSTI) â€” never pass user input to templates',
         'severity': 'critical',
         'category': 'security',
         'languages': ['python', 'javascript', 'java'],
@@ -400,7 +407,7 @@ REGEX_RULES = [
     {
         'id': 'wildcard-import',
         'pattern': r'^from\s+\S+\s+import\s+\*',
-        'message': 'Wildcard import pollutes namespace — import specific names',
+        'message': 'Wildcard import pollutes namespace â€” import specific names',
         'severity': 'low',
         'category': 'maintainability',
         'languages': ['python'],
@@ -408,7 +415,7 @@ REGEX_RULES = [
     {
         'id': 'dangerously-set-html',
         'pattern': r'dangerouslySetInnerHTML',
-        'message': 'dangerouslySetInnerHTML can introduce XSS — sanitize content first',
+        'message': 'dangerouslySetInnerHTML can introduce XSS â€” sanitize content first',
         'severity': 'high',
         'category': 'security',
         'languages': ['javascript', 'typescript'],
@@ -416,7 +423,7 @@ REGEX_RULES = [
     {
         'id': 'no-error-handling-promise',
         'pattern': r'\.then\s*\([^)]*\)\s*(?!\.catch)',
-        'message': 'Promise without .catch() — unhandled rejections crash Node.js',
+        'message': 'Promise without .catch() â€” unhandled rejections crash Node.js',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['javascript', 'typescript'],
@@ -424,7 +431,7 @@ REGEX_RULES = [
     {
         'id': 'var-usage',
         'pattern': r'\bvar\s+\w+',
-        'message': 'Use of "var" — prefer "const" or "let" for block scoping',
+        'message': 'Use of "var" â€” prefer "const" or "let" for block scoping',
         'severity': 'low',
         'category': 'maintainability',
         'languages': ['javascript'],
@@ -432,22 +439,38 @@ REGEX_RULES = [
     {
         'id': 'loose-equality',
         'pattern': r'[^!=]==[^=]',
-        'message': 'Loose equality (==) — use strict equality (===) to avoid type coercion',
+        'message': 'Loose equality (==) â€” use strict equality (===) to avoid type coercion',
         'severity': 'low',
         'category': 'reliability',
         'languages': ['javascript', 'typescript'],
     },
     {
         'id': 'console-log',
-        'pattern': r'console\.(log|debug|info)\s*\(',
-        'message': 'Console logging found — remove before production deployment',
+        'pattern': r'console\.(log|debug|info|warn|error)\s*\(',
+        'message': 'Console statements found â€” verify if this should be in production or if it logs sensitive data',
         'severity': 'low',
         'category': 'best-practice',
         'languages': ['javascript', 'typescript'],
     },
     {
+        'id': 'python-print',
+        'pattern': r'^\s*print\s*\(',
+        'message': 'Print statement used instead of proper logging framework',
+        'severity': 'low',
+        'category': 'best-practice',
+        'languages': ['python'],
+    },
+    {
+        'id': 'react-missing-deps',
+        'pattern': r'useEffect\s*\(\s*\(\)\s*=>\s*\{(?![^}]*\}\s*,)',
+        'message': 'useEffect might be missing a dependency array, causing it to run on every render',
+        'severity': 'medium',
+        'category': 'reliability',
+        'languages': ['javascript', 'typescript'],
+    },
+    {
         'id': 'todo-fixme',
-        'pattern': r'(?i)(#|//|/\*)\s*(TODO|FIXME|HACK|XXX|BUG):?\s+',
+        'pattern': r'(?i)(#|//|/\*)\s*(TODO|FIXME|HACK|XXX|BUG)',
         'message': 'Code contains TODO/FIXME marker that needs attention',
         'severity': 'low',
         'category': 'maintainability',
@@ -456,7 +479,7 @@ REGEX_RULES = [
     {
         'id': 'hardcoded-port',
         'pattern': r'(?i)(listen|bind|port)\s*[\(=]\s*["\']?\d{4,5}["\']?',
-        'message': 'Hardcoded port number — use configuration/environment variable',
+        'message': 'Hardcoded port number â€” use configuration/environment variable',
         'severity': 'low',
         'category': 'best-practice',
         'languages': ['python', 'javascript', 'java', 'go', 'ruby', 'php'],
@@ -464,7 +487,7 @@ REGEX_RULES = [
     {
         'id': 'buffer-overflow-c',
         'pattern': r'(?i)\b(gets|sprintf|strcpy|strcat)\s*\(',
-        'message': 'Unsafe C function — use bounds-checking alternatives (fgets, snprintf, strncpy)',
+        'message': 'Unsafe C function â€” use bounds-checking alternatives (fgets, snprintf, strncpy)',
         'severity': 'critical',
         'category': 'security',
         'languages': ['c', 'c++'],
@@ -472,7 +495,7 @@ REGEX_RULES = [
     {
         'id': 'format-string-c',
         'pattern': r'(?i)(printf|fprintf|sprintf)\s*\(\s*\w+\s*\)',
-        'message': 'Format string vulnerability — user-controlled format string',
+        'message': 'Format string vulnerability â€” user-controlled format string',
         'severity': 'critical',
         'category': 'security',
         'languages': ['c', 'c++'],
@@ -480,7 +503,7 @@ REGEX_RULES = [
     {
         'id': 'memory-leak-c',
         'pattern': r'\bmalloc\s*\((?!.*free)',
-        'message': 'Memory allocated with malloc() — ensure corresponding free() exists',
+        'message': 'Memory allocated with malloc() â€” ensure corresponding free() exists',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['c', 'c++'],
@@ -488,7 +511,7 @@ REGEX_RULES = [
     {
         'id': 'null-check-after-deref',
         'pattern': r'(\w+)->\w+.*\n.*if\s*\(\s*\1\s*[!=]=\s*NULL',
-        'message': 'Pointer dereferenced before null check — check first',
+        'message': 'Pointer dereferenced before null check â€” check first',
         'severity': 'high',
         'category': 'reliability',
         'languages': ['c', 'c++'],
@@ -496,7 +519,7 @@ REGEX_RULES = [
     {
         'id': 'unsafe-unwrap',
         'pattern': r'\.(unwrap|expect)\s*\(\s*\)',
-        'message': 'Unwrap on Result/Option may panic — handle error case explicitly',
+        'message': 'Unwrap on Result/Option may panic â€” handle error case explicitly',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['rust'],
@@ -504,7 +527,7 @@ REGEX_RULES = [
     {
         'id': 'go-error-ignored',
         'pattern': r'(?i)(\w+),\s*_\s*:?=\s*\w+\.\w+\s*\(',
-        'message': 'Error return value ignored — always handle errors in Go',
+        'message': 'Error return value ignored â€” always handle errors in Go',
         'severity': 'medium',
         'category': 'reliability',
         'languages': ['go'],
@@ -512,7 +535,7 @@ REGEX_RULES = [
     {
         'id': 'shell-injection',
         'pattern': r'(?i)(\$\(|`)\s*.*\$\{?\w+',
-        'message': 'Variable in shell command substitution — may allow injection',
+        'message': 'Variable in shell command substitution â€” may allow injection',
         'severity': 'high',
         'category': 'security',
         'languages': ['shell'],
@@ -520,7 +543,7 @@ REGEX_RULES = [
     {
         'id': 'php-type-juggling',
         'pattern': r'(?i)\$\w+\s*==\s*["\']',
-        'message': 'Loose comparison in PHP — use === to prevent type juggling attacks',
+        'message': 'Loose comparison in PHP â€” use === to prevent type juggling attacks',
         'severity': 'high',
         'category': 'security',
         'languages': ['php'],
@@ -528,7 +551,7 @@ REGEX_RULES = [
     {
         'id': 'php-file-include',
         'pattern': r'(?i)(include|require|include_once|require_once)\s*\(\s*\$',
-        'message': 'Dynamic file inclusion with variable — potential Local File Inclusion (LFI)',
+        'message': 'Dynamic file inclusion with variable â€” potential Local File Inclusion (LFI)',
         'severity': 'critical',
         'category': 'security',
         'languages': ['php'],
@@ -536,7 +559,7 @@ REGEX_RULES = [
     {
         'id': 'nosql-injection',
         'pattern': r'(?i)\.(find|findOne|aggregate|updateOne|deleteOne)\s*\(.*\$\w+',
-        'message': 'Potential NoSQL injection — sanitize user input in database queries',
+        'message': 'Potential NoSQL injection â€” sanitize user input in database queries',
         'severity': 'high',
         'category': 'security',
         'languages': ['javascript', 'typescript', 'python'],
@@ -544,7 +567,7 @@ REGEX_RULES = [
     {
         'id': 'timing-attack',
         'pattern': r'(?i)(password|token|secret|hash)\s*==\s*',
-        'message': 'String comparison may be vulnerable to timing attacks — use constant-time compare',
+        'message': 'String comparison may be vulnerable to timing attacks â€” use constant-time compare',
         'severity': 'medium',
         'category': 'security',
         'languages': ['python', 'javascript', 'java', 'go', 'ruby'],
@@ -552,7 +575,7 @@ REGEX_RULES = [
     {
         'id': 'deprecated-function',
         'pattern': r'(?i)\b(atoi|gets|tmpnam|mktemp)\s*\(',
-        'message': 'Deprecated/unsafe function — use modern alternatives',
+        'message': 'Deprecated/unsafe function â€” use modern alternatives',
         'severity': 'medium',
         'category': 'maintainability',
         'languages': ['c', 'c++', 'python'],
@@ -560,7 +583,7 @@ REGEX_RULES = [
     {
         'id': 'logging-exception',
         'pattern': r'except\s+\w+.*:\s*\n\s*(pass|return)',
-        'message': 'Exception caught but not logged — add logging for debugging',
+        'message': 'Exception caught but not logged â€” add logging for debugging',
         'severity': 'low',
         'category': 'reliability',
         'languages': ['python'],
@@ -569,222 +592,116 @@ REGEX_RULES = [
 
 
 class StaticAnalyzer:
-    """Runs static analysis using Semgrep or fallback regex patterns."""
-    
+    """Runs static analysis using registered analysis engines."""
+
     def __init__(self):
-        self._semgrep_available = None
-    
-    def is_semgrep_available(self) -> bool:
-        """Check if Semgrep CLI is installed."""
-        if self._semgrep_available is None:
-            try:
-                result = subprocess.run(
-                    ['semgrep', '--version'],
-                    capture_output=True, text=True, timeout=10
-                )
-                self._semgrep_available = result.returncode == 0
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                self._semgrep_available = False
-        return self._semgrep_available
-    
-    def run_analysis(self, repo_path: str, file_tree: list[dict] = None) -> list[dict]:
-        """
-        Run static analysis on a repository.
-        Uses Semgrep if available, otherwise falls back to regex patterns.
-        """
-        if self.is_semgrep_available():
-            issues = self._run_semgrep(repo_path)
-        else:
-            print("⚠️  Semgrep not installed, using fallback regex scanner")
-            issues = self._run_regex_scanner(repo_path, file_tree)
-        
-        # Assign unique IDs to issues
-        for i, issue in enumerate(issues):
-            if 'id' not in issue or not issue['id']:
-                fp = issue.get("file_path", "")
-                ln = issue.get("line_number", 0)
-                hash_str = hashlib.md5(f"{fp}{ln}".encode()).hexdigest()[:8]
-                issue['id'] = f"issue_{i}_{hash_str}"
-        
+        pass
+
+    async def run_analysis(
+        self,
+        repo_path: str,
+        db,
+        file_tree: list[dict] | None = None,
+    ) -> list[dict]:
+        """Run static analysis on a repository using DB-driven rules."""
+        regex_rules, semgrep_rules = await self._load_rules(db)
+
+        registry = EngineRegistry()
+        registry.register(RegexEngine(repo_path, regex_rules))
+        registry.register(SemgrepEngine(repo_path, semgrep_rules))
+
+        issues: list[dict] = []
+        files_to_scan = self._get_files_to_scan(repo_path, file_tree)
+        for rel_path, language in files_to_scan:
+            findings = await registry.run_all(rel_path, language)
+            for finding in findings:
+                data = finding.model_dump()
+                data.setdefault("issue_type", data.get("rule_id", ""))
+                data["category"] = data.get("defect_family")
+                issues.append(data)
+
+        self._assign_ids(issues)
         return issues
-    
-    def _run_semgrep(self, repo_path: str) -> list[dict]:
-        """Run Semgrep with auto config and parse results."""
-        try:
-            result = subprocess.run(
-                [
-                    'semgrep', 'scan',
-                    '--config=auto',
-                    '--json',
-                    '--timeout=300',
-                    '--max-target-bytes=1000000',
-                    repo_path,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=600,  # 10 minute timeout
-                cwd=repo_path,
+
+    async def _load_rules(self, db) -> tuple[list[dict], dict[str, dict]]:
+        """Load active rules from the database once per analysis run."""
+        result = await db.execute(
+            select(AnalysisRule).where(
+                AnalysisRule.is_active.is_(True),
+                AnalysisRule.match_type.in_(
+                    ("regex_line", "regex_multiline", "ast_semgrep")
+                ),
             )
-            
-            if result.stdout:
-                return self._parse_semgrep_results(result.stdout, repo_path)
-            return []
-            
-        except subprocess.TimeoutExpired:
-            print("⚠️  Semgrep analysis timed out")
-            return []
-        except Exception as e:
-            print(f"⚠️  Semgrep error: {e}")
-            return []
-    
-    def _parse_semgrep_results(self, json_output: str, repo_path: str) -> list[dict]:
-        """Parse Semgrep JSON output into our issue format."""
-        try:
-            data = json.loads(json_output)
-        except json.JSONDecodeError:
-            return []
-        
-        issues = []
-        results = data.get('results', [])
-        
-        for result in results:
-            # Get relative file path
-            file_path = result.get('path', '')
-            if file_path.startswith(repo_path):
-                file_path = os.path.relpath(file_path, repo_path)
-            file_path = file_path.replace('\\', '/')
-            
-            # Map Semgrep severity to our severity levels
-            semgrep_severity = result.get('extra', {}).get('severity', 'WARNING')
-            severity = self._map_semgrep_severity(semgrep_severity)
-            
-            # Get code snippet
-            lines = result.get('extra', {}).get('lines', '')
-            
-            # Extract issue type from rule ID
-            rule_id = result.get('check_id', 'unknown')
-            issue_type = self._extract_issue_type(rule_id)
-            
-            issues.append({
-                'id': '',  # Will be assigned later
-                'file_path': file_path,
-                'line_number': result.get('start', {}).get('line', 0),
-                'end_line': result.get('end', {}).get('line', 0),
-                'column': result.get('start', {}).get('col', 0),
-                'issue_type': issue_type,
-                'severity': severity,
-                'message': result.get('extra', {}).get('message', 'Issue detected'),
-                'code_snippet': lines,
-                'rule_id': rule_id,
-                'category': result.get('extra', {}).get('metadata', {}).get('category', 'security'),
-            })
-        
-        return issues
-    
-    def _map_semgrep_severity(self, severity: str) -> str:
-        """Map Semgrep severity to our severity levels."""
-        mapping = {
-            'ERROR': 'high',
-            'WARNING': 'medium',
-            'INFO': 'low',
+        )
+        rules = result.scalars().all()
+
+        regex_rules: list[dict] = []
+        semgrep_rules: dict[str, dict] = {}
+        for rule in rules:
+            rule_dict = self._rule_to_dict(rule)
+            if rule.match_type in ("regex_line", "regex_multiline"):
+                regex_rules.append(rule_dict)
+            elif rule.match_type == "ast_semgrep":
+                semgrep_rules[rule.rule_id] = rule_dict
+        return regex_rules, semgrep_rules
+
+    @staticmethod
+    def _rule_to_dict(rule: AnalysisRule) -> dict:
+        return {
+            "rule_id": rule.rule_id,
+            "name": rule.name,
+            "description": rule.description,
+            "language": rule.language,
+            "defect_family": rule.defect_family,
+            "severity": rule.severity,
+            "pattern": rule.pattern,
+            "match_type": rule.match_type,
+            "message": rule.message,
+            "fix_hint": rule.fix_hint,
+            "cwe_id": rule.cwe_id,
+            "owasp_ref": rule.owasp_ref,
         }
-        return mapping.get(severity.upper(), 'medium')
-    
-    def _extract_issue_type(self, rule_id: str) -> str:
-        """Extract a human-readable issue type from rule ID."""
-        # Common patterns in Semgrep rule IDs
-        type_keywords = {
-            'sql': 'sql-injection',
-            'xss': 'xss',
-            'injection': 'injection',
-            'hardcoded': 'hardcoded-secret',
-            'eval': 'code-injection',
-            'exec': 'code-injection',
-            'crypto': 'weak-crypto',
-            'hash': 'weak-crypto',
-            'deserialization': 'insecure-deserialization',
-            'cors': 'cors-misconfiguration',
-            'redirect': 'open-redirect',
-            'path': 'path-traversal',
-            'ssrf': 'ssrf',
-            'csrf': 'csrf',
-            'jwt': 'jwt-vulnerability',
-        }
-        
-        rule_lower = rule_id.lower()
-        for keyword, issue_type in type_keywords.items():
-            if keyword in rule_lower:
-                return issue_type
-        
-        # Extract last part of rule ID as type
-        parts = rule_id.split('.')
-        if parts:
-            return parts[-1].replace('-', ' ').replace('_', '-')
-        return 'security-issue'
-    
-    def _run_regex_scanner(self, repo_path: str, file_tree: list[dict] = None) -> list[dict]:
-        """Fallback regex-based scanner when Semgrep isn't available."""
-        issues = []
-        
-        # Determine which files to scan
-        if file_tree:
-            files_to_scan = [
-                (os.path.join(repo_path, f['path']), f['language'], f['path'])
-                for f in file_tree
-                if f['language'] in (
-                    'python', 'javascript', 'typescript', 'java',
-                    'go', 'ruby', 'php', 'c', 'c++', 'c#',
-                    'rust', 'kotlin', 'swift', 'shell',
-                )
-            ]
-        else:
-            files_to_scan = self._find_source_files(repo_path)
-        
-        for full_path, language, rel_path in files_to_scan:
-            try:
-                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                    lines = content.split('\n')
-            except Exception:
+
+    @staticmethod
+    def _assign_ids(issues: list[dict]) -> None:
+        for i, issue in enumerate(issues):
+            if issue.get("id"):
                 continue
-            
-            for rule in REGEX_RULES:
-                if language not in rule['languages']:
-                    continue
-                
-                for line_num, line in enumerate(lines, 1):
-                    if re.search(rule['pattern'], line):
-                        # Get surrounding code for snippet
-                        start = max(0, line_num - 2)
-                        end = min(len(lines), line_num + 2)
-                        snippet = '\n'.join(lines[start:end])
-                        
-                        issues.append({
-                            'id': '',
-                            'file_path': rel_path,
-                            'line_number': line_num,
-                            'end_line': line_num,
-                            'column': 1,
-                            'issue_type': rule['id'],
-                            'severity': rule['severity'],
-                            'message': rule['message'],
-                            'code_snippet': snippet,
-                            'rule_id': f"regex.{rule['id']}",
-                            'category': rule['category'],
-                        })
-        
-        return issues
-    
-    def _find_source_files(self, repo_path: str) -> list[tuple]:
-        """Find source files when file_tree isn't provided."""
+            fp = issue.get("file_path", "")
+            ln = issue.get("line_number", 0)
+            rule_id = issue.get("rule_id", "")
+            hash_str = hashlib.md5(f"{fp}{ln}{rule_id}".encode()).hexdigest()[:8]
+            issue["id"] = f"issue_{i}_{hash_str}"
+
+    def _get_files_to_scan(
+        self,
+        repo_path: str,
+        file_tree: list[dict] | None,
+    ) -> list[tuple[str, str]]:
+        if file_tree:
+            return [
+                (f["path"], f["language"])
+                for f in file_tree
+                if f.get("language") in SCANNABLE_LANGUAGES
+            ]
+        return self._find_source_files(repo_path)
+
+    def _find_source_files(self, repo_path: str) -> list[tuple[str, str]]:
+        """Find source files using FileFilter for fast, smart selection."""
+        from app.services.file_filter import FileFilter
         from app.services.git_service import GitService
+
         gs = GitService()
-        tree = gs.get_file_tree(repo_path)
-        return [
-            (os.path.join(repo_path, f['path']), f['language'], f['path'])
-            for f in tree
-            if f['language'] in ('python', 'javascript', 'typescript', 'java')
-        ]
+        ff = FileFilter(repo_path)
+        user_files = ff.user_authored_files(max_files=100)
+
+        result: list[tuple[str, str]] = []
+        for fpath in user_files:
+            rel_path = str(fpath.relative_to(repo_path)).replace("\\", "/")
+            language = gs.detect_language(fpath.name)
+            if language in SCANNABLE_LANGUAGES:
+                result.append((rel_path, language))
+        return result
     
     def calculate_health_score(self, issues: list[dict]) -> int:
         """
@@ -796,12 +713,12 @@ class StaticAnalyzer:
         for issue in issues:
             severity = issue.get('severity', 'medium')
             base_penalty = SEVERITY_WEIGHTS.get(severity, 5)
-            
-            # Extra penalty for high-impact issue types
-            issue_type = issue.get('issue_type', '')
-            if issue_type in HIGH_IMPACT_TYPES:
+
+            # Extra penalty for high-impact defect families
+            defect_family = issue.get('defect_family', '')
+            if defect_family in HIGH_IMPACT_FAMILIES:
                 base_penalty *= 1.5
-            
+
             score -= base_penalty
         
         # Floor at 0, cap at 100
@@ -817,7 +734,15 @@ class StaticAnalyzer:
     
     def get_severity_summary(self, issues: list[dict]) -> dict:
         """Count issues by severity."""
-        summary = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+        summary = {
+            'blocker': 0,
+            'critical': 0,
+            'high': 0,
+            'medium': 0,
+            'low': 0,
+            'info': 0,
+            'trace': 0,
+        }
         for issue in issues:
             severity = issue.get('severity', 'medium')
             if severity in summary:
@@ -827,3 +752,4 @@ class StaticAnalyzer:
 
 # Singleton instance
 static_analyzer = StaticAnalyzer()
+

@@ -17,4 +17,22 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // ─── PRODUCTION OPTIMIZATIONS ──────────────────────────────────────
+    target: 'esnext',
+    minify: 'terser', 
+    cssMinify: true,
+    terserOptions: {
+      compress: {
+        drop_console: true, // Removes console logs in production
+        drop_debugger: true,
+      },
+    },
+    rollupOptions: {
+      output: {
+        // manualChunks removed for debugging
+      },
+    },
+    chunkSizeWarningLimit: 1000, // Increased limit due to heavy viz libraries
+  },
 })
