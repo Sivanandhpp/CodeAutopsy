@@ -537,17 +537,39 @@ async def export_pdf(
 
     # User Statistics (Author Error Counts)
     elems.append(Paragraph("User Statistics & Defect Attribution", S['section']))
-    if not user_counts:
+    
+    # Use pre-calculated stats from the DB if available, otherwise fallback to issues
+    contributor_data = record.get_contributor_stats()
+    
+    if not contributor_data and issues:
+        # Fallback calculation if stats aren't pre-calculated (for legacy records)
+        contributor_data = {}
+        for issue in issues:
+            email = issue.get("origin_author_email") or issue.get("origin_author", "Unknown")
+            name = issue.get("origin_author_name") or email.split('<')[0].strip() if '<' in email else email
+            if email not in contributor_data:
+                contributor_data[email] = {"name": name, "email": email, "count": 0}
+            contributor_data[email]["count"] += 1
+
+    if not contributor_data:
         elems.append(Paragraph("No author data available.", S['body']))
     else:
-        sorted_users = sorted(user_counts.items(), key=lambda x: x[1], reverse=True)[:10]  # top 10
+        # Sort by count descending
+        sorted_users = sorted(contributor_data.values(), key=lambda x: x['count'], reverse=True)[:10]
         user_rows = []
         user_names = []
         user_data = []
-        for author, count in sorted_users:
-            user_rows.append([author, str(count)])
+        for user_info in sorted_users:
+            display_name = user_info['name']
+            email = user_info['email']
+            count = user_info['count']
+            
+            # Format display string for the table
+            table_display = f"{display_name}\n<font size=7 color='#86868b'>{email}</font>"
+            user_rows.append([Paragraph(table_display, S['body']), str(count)])
+            
             # For the chart, we want them bottom-up so highest is at top
-            user_names.insert(0, author)
+            user_names.insert(0, display_name)
             user_data.insert(0, count)
             
         user_table_width = usable_width * 0.5

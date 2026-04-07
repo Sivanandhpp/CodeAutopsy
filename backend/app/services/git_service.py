@@ -191,6 +191,8 @@ class GitService:
     
     def get_file_content(self, repo_path: str, file_path: str) -> str:
         """Read file contents from the cloned repo."""
+        # Fix: Strip leading slashes to prevent os.path.join from treating it as root-relative on Windows/Linux
+        file_path = file_path.lstrip('/')
         full_path = os.path.join(repo_path, file_path)
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -206,24 +208,20 @@ class GitService:
                 return f.read()
         except Exception as e:
             raise RuntimeError(f"Failed to read file: {str(e)}")
-            
+
     def put_file_content(self, repo_path: str, file_path: str, content: str) -> None:
-        """Write file contents to the cloned repo."""
+        """Write file contents (sandbox edit)."""
+        file_path = file_path.lstrip('/')
         full_path = os.path.join(repo_path, file_path)
-        if not os.path.exists(full_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-            
+        
         # Security: prevent path traversal
         real_repo = os.path.realpath(repo_path)
         real_file = os.path.realpath(full_path)
         if not real_file.startswith(real_repo):
             raise ValueError("Invalid file path: path traversal detected")
             
-        try:
-            with open(full_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-        except Exception as e:
-            raise RuntimeError(f"Failed to write file: {str(e)}")
+        with open(full_path, 'w', encoding='utf-8') as f:
+            f.write(content)
     
     def cleanup_repo(self, repo_path: str):
         """Delete the cloned repository directory."""
@@ -264,8 +262,11 @@ class GitService:
                     if current_line == line_num:
                         a_name = commit.author.name if commit.author and commit.author.name else "Unknown"
                         a_email = commit.author.email if commit.author and commit.author.email else "unknown@example.com"
+                        
+                        issue['origin_author_name'] = a_name
+                        issue['origin_author_email'] = a_email
+                        issue['origin_author'] = f"{a_name} <{a_email}>" # Legacy field
                         issue['origin_commit'] = commit.hexsha[:8]
-                        issue['origin_author'] = f"{a_name} <{a_email}>"
                         
                         date_str = datetime.fromtimestamp(commit.committed_date, tz=timezone.utc).isoformat()
                         issue['origin_date'] = date_str

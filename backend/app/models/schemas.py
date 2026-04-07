@@ -226,6 +226,11 @@ class IssueDetail(BaseModel):
     owasp_ref: Optional[str] = None
     code_snippet: str = ""
     engine_source: Optional[str] = None
+    origin_author_name: Optional[str] = None
+    origin_author_email: Optional[str] = None
+    origin_author: Optional[str] = None
+    origin_commit: Optional[str] = None
+    origin_date: Optional[str] = None
 
 
 class OllamaFinding(BaseModel):
@@ -265,6 +270,7 @@ class AnalysisResultResponse(BaseModel):
     issues: list[IssueDetail] = []
     file_tree: list = []
     ollama_findings: list[OllamaFinding] = []
+    contributor_stats: dict = {}
     ai_summary: Optional[str] = None
     error_message: Optional[str] = None
     created_at: Optional[str] = None

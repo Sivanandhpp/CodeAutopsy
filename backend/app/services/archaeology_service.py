@@ -18,12 +18,11 @@ class ArchaeologyService:
 
     # ─── Author Anonymization ─────────────────────────────────
 
-    def _anonymize_author(self, email: str) -> str:
-        """Hash email → 'dev_a3f8c1b2' for privacy."""
-        if not email:
-            return "dev_unknown"
-        h = hashlib.md5(email.encode()).hexdigest()[:8]
-        return f"dev_{h}"
+    def _get_author_info(self, commit) -> str:
+        """Get 'Name <email>' from a git commit."""
+        if not commit or not commit.author:
+            return "Unknown <unknown@example.com>"
+        return f"{commit.author.name} <{commit.author.email}>"
 
     def _parse_date(self, dt) -> str:
         """Convert git datetime to ISO format string."""
@@ -59,13 +58,12 @@ class ArchaeologyService:
         line_num = 1
 
         for commit, blamed_lines in blame_data:
-            author_email = commit.author.email if commit.author else ""
-            author_name = self._anonymize_author(author_email)
+            author_info = self._get_author_info(commit)
             commit_date = self._parse_date(commit.committed_date)
 
-            if author_name not in author_stats:
-                author_stats[author_name] = {
-                    "name": author_name,
+            if author_info not in author_stats:
+                author_stats[author_info] = {
+                    "name": author_info,
                     "lines": 0,
                     "commits": set(),
                 }
@@ -73,13 +71,13 @@ class ArchaeologyService:
             for text_line in blamed_lines:
                 lines.append({
                     "line_number": line_num,
-                    "author": author_name,
+                    "author": author_info,
                     "commit_hash": commit.hexsha[:8],
                     "date": commit_date,
                     "content": str(text_line),
                 })
-                author_stats[author_name]["lines"] += 1
-                author_stats[author_name]["commits"].add(commit.hexsha)
+                author_stats[author_info]["lines"] += 1
+                author_stats[author_info]["commits"].add(commit.hexsha)
                 line_num += 1
 
         # Convert sets to counts for JSON
@@ -142,9 +140,7 @@ class ArchaeologyService:
         origin = {
             "commit_hash": origin_commit.hexsha[:8],
             "full_hash": origin_commit.hexsha,
-            "author": self._anonymize_author(
-                origin_commit.author.email if origin_commit.author else ""
-            ),
+            "author": self._get_author_info(origin_commit),
             "date": self._parse_date(origin_commit.committed_date),
             "message": origin_commit.message.strip().split('\n')[0],
             "line_content": origin_line_content,
@@ -262,7 +258,7 @@ class ArchaeologyService:
                     current_commit = {
                         "commit_hash": parts[0][:8],
                         "full_hash": parts[0],
-                        "author": self._anonymize_author(parts[1]),
+                        "author": f"{parts[1]} <{parts[1]}>" if '@' in parts[1] else parts[1], # parts[1] is already email from git log -L format %ae
                         "date": parts[2].strip(),
                         "message": '|'.join(parts[3:]).strip(),
                         "change_type": "modification",
@@ -304,7 +300,7 @@ class ArchaeologyService:
                 chain.append({
                     "commit_hash": commit.hexsha[:8],
                     "full_hash": commit.hexsha,
-                    "author": self._anonymize_author(author_email),
+                    "author": self._get_author_info(commit),
                     "date": self._parse_date(commit.committed_date),
                     "message": commit.message.strip().split('\n')[0],
                     "diff": diff_text[:500],  # Truncate long diffs
@@ -342,8 +338,7 @@ class ArchaeologyService:
         authors_seen = set()
 
         for commit in commits:
-            author_email = commit.author.email if commit.author else ""
-            author = self._anonymize_author(author_email)
+            author = self._get_author_info(commit)
             authors_seen.add(author)
 
             # Get file-level stats

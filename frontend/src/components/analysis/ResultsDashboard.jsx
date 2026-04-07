@@ -15,9 +15,9 @@ import {
   AlertCircle, Info, CheckCircle2, Loader2, Download, X, Sparkles,
   RotateCw, FileText,
 } from 'lucide-react';
-import { 
-  LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, 
-  ResponsiveContainer, BarChart, Bar, CartesianGrid 
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip,
+  ResponsiveContainer, BarChart, Bar, CartesianGrid
 } from 'recharts';
 import useAnalysisStore from '../../lib/analysisStore';
 import useAuthStore from '../../lib/authStore';
@@ -38,7 +38,7 @@ const SEVERITY_ORDER = {
 };
 
 export default function ResultsDashboard({ analysisId, errorBanner }) {
-  const { 
+  const {
     analysisResult,
     staticIssues,
     healthScore,
@@ -72,7 +72,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
   const navigate = useNavigate();
   const [errorBannerDismissed, setErrorBannerDismissed] = useState(false);
   const { isAuthenticated } = useAuthStore();
-  
+
   // In case analysisResult is still hydrating from SSE, we gracefully fallback
   const finalHealthScore = healthScore ?? analysisResult?.health_score ?? 0;
   const rawIssues = useMemo(() => {
@@ -134,7 +134,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
       setRerunLoading(false);
     }
   };
-  
+
   // Filter issues
   const filteredIssues = useMemo(() => {
     let filtered = issues || [];
@@ -143,7 +143,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
     }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(i => 
+      filtered = filtered.filter(i =>
         i.file_path.toLowerCase().includes(q) ||
         i.message.toLowerCase().includes(q) ||
         (i.defect_family || '').toLowerCase().includes(q) ||
@@ -152,7 +152,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
     }
     return filtered;
   }, [issues, severityFilter, searchQuery]);
-  
+
   // Severity counts
   const severityCounts = useMemo(() => {
     const counts = {
@@ -173,7 +173,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
   const aiModelMeta = useMemo(() => {
     let findings = analysisResult?.ollama_findings || [];
     if (typeof findings === 'string') {
-      try { findings = JSON.parse(findings); } catch(e) { findings = []; }
+      try { findings = JSON.parse(findings); } catch (e) { findings = []; }
     }
     const meta = findings.find(f => f.type === 'ai_meta');
     return meta?.model_info || 'Local LLM';
@@ -181,39 +181,50 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
 
   const { commitChartData, userStatsData } = useMemo(() => {
     if (!issues || issues.length === 0) return { commitChartData: [], userStatsData: [] };
-    
+
     const commits = {};
-    const users = {};
-    
+    const backendStats = analysisResult?.contributor_stats || {};
+
+    // Process issues for commit chart
     issues.forEach(issue => {
-      const author = issue.origin_author || 'Unknown';
       const dateStr = issue.origin_date;
-      
-      users[author] = (users[author] || 0) + 1;
-      
       if (dateStr) {
         const dateObj = new Date(dateStr);
         const day = dateObj.toISOString().split('T')[0];
         commits[day] = (commits[day] || 0) + 1;
       }
     });
-    
+
     const commitChartData = Object.keys(commits)
       .sort()
       .map(day => ({
         date: day,
         issues: commits[day],
       }));
-      
-    const userStatsData = Object.keys(users)
-      .map(u => ({ author: u, count: users[u] }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10); // Top 10 authors
-      
-    return { commitChartData, userStatsData };
-  }, [issues]);
 
-  
+    // Use pre-calculated stats from backend if available, otherwise calculate fallback
+    let userStatsData = [];
+    if (Object.keys(backendStats).length > 0) {
+      userStatsData = Object.values(backendStats)
+        .map(u => ({ author: u.name, full: `${u.name} <${u.email}>`, count: u.count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+    } else {
+      const users = {};
+      issues.forEach(issue => {
+        const author = issue.origin_author_name || issue.origin_author || 'Unknown';
+        users[author] = (users[author] || 0) + 1;
+      });
+      userStatsData = Object.keys(users)
+        .map(u => ({ author: u, count: users[u] }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+    }
+
+    return { commitChartData, userStatsData };
+  }, [issues, analysisResult]);
+
+
   // Health score color
   const getScoreColor = (score) => {
     if (score >= 90) return 'var(--ca-success)';
@@ -222,7 +233,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
     if (score >= 30) return 'var(--ca-high)';
     return 'var(--ca-critical)';
   };
-  
+
   const getGrade = (score) => {
     if (score >= 90) return 'A';
     if (score >= 80) return 'B';
@@ -230,7 +241,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
     if (score >= 60) return 'D';
     return 'F';
   };
-  
+
   // Severity icon
   const SeverityIcon = ({ severity }) => {
     const icons = {
@@ -244,7 +255,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
     };
     return icons[severity] || <Info size={14} />;
   };
-  
+
   // Group issues by file for file tree view
   const issuesByFile = useMemo(() => {
     const grouped = {};
@@ -254,7 +265,7 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
     });
     return grouped;
   }, [filteredIssues]);
-  
+
   // Auto-expand all files if there are a reasonable number of them
   useEffect(() => {
     const filePaths = Object.keys(issuesByFile);
@@ -310,548 +321,619 @@ export default function ResultsDashboard({ analysisId, errorBanner }) {
     }
     setExpandedFiles(newExpanded);
   };
-  
+
   return (
     <>
       <Navbar />
       <div className="results-page">
         <div className="container">
-        {/* Header — flex layout for repo info on left and actions on right */}
-        <div className="results-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: '20px' }}>
-          <div className="header-info">
-            <Link to="/" className="back-link">
-              <ArrowLeft size={16} />
-              <span>New Analysis</span>
-            </Link>
-            <h1 className="repo-name" style={{ marginBottom: '4px' }}>{finalRepoName}</h1>
-            {finalRepoUrl && (
-              <a href={finalRepoUrl} target="_blank" rel="noopener noreferrer" className="repo-url" style={{ marginBottom: 0 }}>
-                {finalRepoUrl}
-              </a>
-            )}
-          </div>
-          
-          <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <div className="export-wrap">
-              <button 
-                ref={exportButtonRef}
-                className="open-editor-btn export-btn"
-                onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
-                disabled={exportingFormat !== null}
-              >
-                {exportingFormat ? (
-                  <>
-                    <Loader2 size={14} className="editor-btn-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Download size={14} />
-                    Export Report
-                    <ChevronDown size={14} style={{ marginLeft: 4 }} />
-                  </>
-                )}
-              </button>
-              <AnimatePresence>
-                {exportDropdownOpen && (
-                  <motion.div
-                    ref={exportMenuRef}
-                    className="export-menu"
-                    initial={{ opacity: 0, y: 6, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                    transition={{ duration: 0.18 }}
-                  >
-                    <div className="export-menu-title">Export Report</div>
-                    <div className="export-menu-subtitle">Choose a format to download</div>
-                    <button 
-                      onClick={() => handleExport('json')}
-                      className="export-menu-item"
-                    >
-                      <span className="export-menu-icon"><FileCode size={14} /></span>
-                      <span className="export-menu-label">Raw JSON</span>
-                      <span className="export-menu-meta">Data only</span>
-                    </button>
-                    <button 
-                      onClick={() => handleExport('pdf')}
-                      className="export-menu-item"
-                    >
-                      <span className="export-menu-icon"><FileText size={14} /></span>
-                      <span className="export-menu-label">Premium PDF</span>
-                      <span className="export-menu-meta">Executive report</span>
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+          {/* Header — flex layout for repo info on left and actions on right */}
+          <div className="results-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: '20px' }}>
+            <div className="header-info">
+              <Link to="/" className="back-link">
+                <ArrowLeft size={16} />
+                <span>New Analysis</span>
+              </Link>
+              <h1 className="repo-name" style={{ marginBottom: '4px' }}>{finalRepoName}</h1>
+              {finalRepoUrl && (
+                <a href={finalRepoUrl} target="_blank" rel="noopener noreferrer" className="repo-url" style={{ marginBottom: 0 }}>
+                  {finalRepoUrl}
+                </a>
+              )}
             </div>
 
-            {isAuthenticated && (
-              <div className="rerun-wrap">
+            <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <div className="export-wrap">
                 <button
-                  ref={rerunButtonRef}
-                  className="open-editor-btn rerun-btn"
-                  onClick={() => setRerunConfirmOpen(!rerunConfirmOpen)}
-                  disabled={rerunLoading || isAnalysisRunning}
+                  ref={exportButtonRef}
+                  className="open-editor-btn export-btn"
+                  onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                  disabled={exportingFormat !== null}
                 >
-                  {rerunLoading ? (
+                  {exportingFormat ? (
                     <>
                       <Loader2 size={14} className="editor-btn-spin" />
-                      Re-running...
+                      Generating...
                     </>
                   ) : (
                     <>
-                      <RotateCw size={14} />
-                      Force Re-run
+                      <Download size={14} />
+                      Export Report
+                      <ChevronDown size={14} style={{ marginLeft: 4 }} />
                     </>
                   )}
                 </button>
                 <AnimatePresence>
-                  {rerunConfirmOpen && (
+                  {exportDropdownOpen && (
                     <motion.div
-                      ref={rerunMenuRef}
-                      className="rerun-popover"
+                      ref={exportMenuRef}
+                      className="export-menu"
                       initial={{ opacity: 0, y: 6, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
                       transition={{ duration: 0.18 }}
                     >
-                      <div className="rerun-title">Start a new snapshot?</div>
-                      <div className="rerun-text">This creates a fresh analysis run and keeps history.</div>
-                      <div className="rerun-actions">
-                        <button className="rerun-cancel" onClick={() => setRerunConfirmOpen(false)}>Cancel</button>
-                        <button className="rerun-confirm" onClick={handleForceRerun}>Re-run now</button>
-                      </div>
+                      <div className="export-menu-title">Export Report</div>
+                      <div className="export-menu-subtitle">Choose a format to download</div>
+                      <button
+                        onClick={() => handleExport('json')}
+                        className="export-menu-item"
+                      >
+                        <span className="export-menu-icon"><FileCode size={14} /></span>
+                        <span className="export-menu-label">Raw JSON</span>
+                        <span className="export-menu-meta">Data only</span>
+                      </button>
+                      <button
+                        onClick={() => handleExport('pdf')}
+                        className="export-menu-item"
+                      >
+                        <span className="export-menu-icon"><FileText size={14} /></span>
+                        <span className="export-menu-label">PDF</span>
+                        <span className="export-menu-meta">Executive report</span>
+                      </button>
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
-            )}
 
-            <button 
-              className="open-editor-btn"
-              onClick={handleOpenEditor}
-              disabled={editorLoading}
-            >
-              {editorLoading ? (
-                <>
-                  <Loader2 size={14} className="editor-btn-spin" />
-                  Loading Editor...
-                </>
-              ) : (
-                <>
-                  <Code2 size={14} />
-                  Open in Editor
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-        
-        {/* Error Banner — shown when analysis errored after Phase 1 */}
-        {errorBanner && !errorBannerDismissed && (
-          <motion.div
-            className="error-banner"
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            style={{
-              display: 'flex', alignItems: 'flex-start', gap: '12px',
-              background: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.3)',
-              borderRadius: 'var(--ca-radius)',
-              padding: '14px 18px',
-              marginBottom: '20px',
-              borderLeft: '4px solid #ef4444',
-            }}
-          >
-            <AlertTriangle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: '#ef4444', fontSize: '0.9rem', marginBottom: 2 }}>Analysis Error (Partial Results)</div>
-              <div style={{ color: 'var(--ca-text-secondary)', fontSize: '0.82rem', lineHeight: 1.5 }}>{errorBanner}</div>
-              <div style={{ color: 'var(--ca-text-muted)', fontSize: '0.75rem', marginTop: 4 }}>Static analysis completed — results below may be partial.</div>
-            </div>
-            <button
-              onClick={() => setErrorBannerDismissed(true)}
-              style={{ background: 'none', border: 'none', color: 'var(--ca-text-muted)', cursor: 'pointer', padding: 4, borderRadius: 6, flexShrink: 0 }}
-            >
-              <X size={16} />
-            </button>
-          </motion.div>
-        )}
-
-        {/* AI Summary Block — Premium Markdown Panel */}
-        {(aiSummary || analysisStatus === 'ai_scanning' || aiSummaryError) && (
-          <motion.div 
-            className="ai-summary-panel"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            style={{ marginBottom: '32px' }}
-          >
-            {/* Panel Header */}
-            <div className="ai-summary-header">
-              <div className="ai-summary-header-left">
-                <div className="ai-summary-icon">
-                  <Brain size={18} />
-                </div>
-                <div>
-                  <div className="ai-summary-title">AI Executive Summary</div>
-                  <div className="ai-summary-subtitle">Generated by {aiModelMeta}</div>
-                </div>
-              </div>
-              <div className="ai-summary-status">
-                {analysisStatus === 'ai_scanning' ? (
-                  <>
-                    <Loader2 size={14} className="spin" />
-                    <span>Generating...</span>
-                  </>
-                ) : aiSummaryError ? (
-                  <>
-                    <AlertTriangle size={14} />
-                    <span>{aiSummaryStatus === 'unavailable' ? 'Unavailable' : 'Warning'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={14} />
-                    <span>Complete</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Markdown Content Body */}
-            <div className="ai-summary-body">
-              {aiSummary ? (
-                <ReactMarkdown 
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    h1: ({children}) => <h1 className="ai-md-h1">{children}</h1>,
-                    h2: ({children}) => <h2 className="ai-md-h2">{children}</h2>,
-                    h3: ({children}) => <h3 className="ai-md-h3">{children}</h3>,
-                    p: ({children}) => <p className="ai-md-p">{children}</p>,
-                    ul: ({children}) => <ul className="ai-md-ul">{children}</ul>,
-                    ol: ({children}) => <ol className="ai-md-ol">{children}</ol>,
-                    li: ({children}) => <li className="ai-md-li">{children}</li>,
-                    code: ({inline, className, children, ...props}) => {
-                      if (inline) {
-                        return <code className="ai-md-inline-code" {...props}>{children}</code>;
-                      }
-                      return (
-                        <div className="ai-md-code-block">
-                          <pre><code className={className} {...props}>{children}</code></pre>
-                        </div>
-                      );
-                    },
-                    blockquote: ({children}) => <blockquote className="ai-md-blockquote">{children}</blockquote>,
-                    strong: ({children}) => <strong className="ai-md-strong">{children}</strong>,
-                    em: ({children}) => <em className="ai-md-em">{children}</em>,
-                    hr: () => <hr className="ai-md-hr" />,
-                    a: ({href, children}) => <a href={href} className="ai-md-link" target="_blank" rel="noopener noreferrer">{children}</a>,
-                    table: ({children}) => <div className="ai-md-table-wrap"><table className="ai-md-table">{children}</table></div>,
-                    th: ({children}) => <th className="ai-md-th">{children}</th>,
-                    td: ({children}) => <td className="ai-md-td">{children}</td>,
-                  }}
-                >
-                  {aiSummary}
-                </ReactMarkdown>
-              ) : aiSummaryError ? (
-                <div className="ai-summary-warning">
-                  <AlertTriangle size={18} />
-                  <div>
-                    <div className="ai-summary-warning-title">AI summary unavailable</div>
-                    <div className="ai-summary-warning-text">{aiSummaryError}</div>
-                  </div>
-                </div>
-              ) : (
-                <div className="ai-summary-placeholder">
-                  <div className="ai-summary-placeholder-text">Analyzing codebase patterns and compiling executive summary...</div>
-                </div>
-              )}
-              {/* Blinking cursor while streaming */}
-              {analysisStatus === 'ai_scanning' && (
-                <span className="ai-stream-cursor" />
-              )}
-            </div>
-          </motion.div>
-        )}
-        
-        {/* Stats Cards */}
-        <motion.div 
-          className="stats-grid"
-          initial="hidden"
-          animate="visible"
-          variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08 } } }}
-        >
-          {/* Health Score */}
-          <motion.div className="stat-card health-score-card" variants={cardVariants}>
-            <div className="health-score-circle" style={{ '--score-color': getScoreColor(finalHealthScore) }}>
-              <svg viewBox="0 0 120 120" className="score-ring">
-                <circle cx="60" cy="60" r="52" fill="none" stroke="var(--ca-border)" strokeWidth="8" />
-                <circle 
-                  cx="60" cy="60" r="52" fill="none" 
-                  stroke={getScoreColor(finalHealthScore)} 
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeDasharray={`${(finalHealthScore / 100) * 327} 327`}
-                  transform="rotate(-90 60 60)"
-                  style={{ transition: 'stroke-dasharray 1s ease-out' }}
-                />
-              </svg>
-              <div className="score-value">
-                <span className="score-number">{finalHealthScore}</span>
-                <span className="score-grade">{getGrade(finalHealthScore)}</span>
-              </div>
-            </div>
-            <div className="stat-label">Health Score</div>
-          </motion.div>
-          
-          {/* Issues Count */}
-          <motion.div className="stat-card" variants={cardVariants}>
-            <div className="stat-icon" style={{ background: 'linear-gradient(135deg, #ef4444, #f97316)' }}>
-              <Bug size={22} />
-            </div>
-            <div className="stat-value">{finalTotalIssues}</div>
-            <div className="stat-label">Issues Found</div>
-            <div className="severity-mini-bar">
-              {Object.entries(severityCounts).map(([sev, count]) => (
-                count > 0 && <span key={sev} className={`badge badge-${sev}`}>{count} {sev}</span>
-              ))}
-            </div>
-          </motion.div>
-          
-          {/* Files Count */}
-          <motion.div className="stat-card" variants={cardVariants}>
-            <div className="stat-icon" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-              <FileCode size={22} />
-            </div>
-            <div className="stat-value">{finalFileCount}</div>
-            <div className="stat-label">Files Analyzed</div>
-            <div className="stat-detail">{finalTotalLines?.toLocaleString()} lines of code</div>
-          </motion.div>
-          
-          {/* Languages */}
-          <motion.div className="stat-card" variants={cardVariants}>
-            <div className="stat-icon" style={{ background: 'linear-gradient(135deg, #06b6d4, #10b981)' }}>
-              <Code2 size={22} />
-            </div>
-            <div className="stat-value">{Object.keys(finalLanguages || {}).length}</div>
-            <div className="stat-label">Languages</div>
-            <div className="stat-detail">
-              {Object.entries(finalLanguages || {}).slice(0, 3).map(([lang, count]) => (
-                <span key={lang} className="lang-chip">{lang}: {count}</span>
-              ))}
-            </div>
-          </motion.div>
-        </motion.div>
-
-        {/* Charts Section: Commit History and User Stats */}
-        {(commitChartData.length > 0 || userStatsData.length > 0) && (
-          <motion.div 
-            className="charts-grid"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', 
-              gap: '24px', 
-              marginBottom: '32px' 
-            }}
-          >
-            {commitChartData.length > 0 && (
-              <div className="card" style={{ padding: '24px' }}>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--ca-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <GitBranch size={16} /> 
-                  Issues by Origin Commit Date
-                </h3>
-                <div style={{ width: '100%', height: 250 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={commitChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--ca-border)" vertical={false} />
-                      <XAxis dataKey="date" stroke="var(--ca-text-muted)" fontSize={12} tickMargin={10} minTickGap={30} />
-                      <YAxis stroke="var(--ca-text-muted)" fontSize={12} allowDecimals={false} />
-                      <RechartsTooltip 
-                        contentStyle={{ backgroundColor: 'var(--ca-bg-elevated)', borderColor: 'var(--ca-border)', borderRadius: '8px' }}
-                        itemStyle={{ color: 'var(--ca-text)' }}
-                      />
-                      <Line type="monotone" dataKey="issues" stroke="var(--ca-accent)" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            )}
-            
-            {userStatsData.length > 0 && (
-              <div className="card" style={{ padding: '24px' }}>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--ca-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Shield size={16} /> 
-                  Issues by Author
-                </h3>
-                <div style={{ width: '100%', height: 250 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={userStatsData} layout="vertical" margin={{ top: 0, right: 0, left: 30, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--ca-border)" horizontal={false} />
-                      <XAxis type="number" stroke="var(--ca-text-muted)" fontSize={12} allowDecimals={false} />
-                      <YAxis type="category" dataKey="author" stroke="var(--ca-text-muted)" fontSize={12} width={100} />
-                      <RechartsTooltip 
-                        cursor={{ fill: 'var(--ca-bg-hover)' }}
-                        contentStyle={{ backgroundColor: 'var(--ca-bg-elevated)', borderColor: 'var(--ca-border)', borderRadius: '8px' }}
-                        itemStyle={{ color: 'var(--ca-text)' }}
-                      />
-                      <Bar dataKey="count" fill="var(--ca-high)" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-        
-        {/* Issues Panel */}
-        <motion.div 
-          className="issues-panel card"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <div className="issues-panel-header">
-            <h2>
-              <Shield size={20} />
-              <span>Issues Found</span>
-              <span className="issue-count-badge">{filteredIssues.length}</span>
-            </h2>
-            
-            <div className="issues-filters">
-              <div className="filter-search">
-                <Search size={16} />
-                <input 
-                  type="text" 
-                  placeholder="Search issues..." 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              
-              <div className="filter-severity">
-                {['all', 'blocker', 'critical', 'high', 'medium', 'low', 'info', 'trace'].map(sev => (
+              {isAuthenticated && (
+                <div className="rerun-wrap">
                   <button
-                    key={sev}
-                    className={`filter-btn ${severityFilter === sev ? 'active' : ''} ${sev !== 'all' ? `filter-${sev}` : ''}`}
-                    onClick={() => setSeverityFilter(sev)}
+                    ref={rerunButtonRef}
+                    className="open-editor-btn rerun-btn"
+                    onClick={() => setRerunConfirmOpen(!rerunConfirmOpen)}
+                    disabled={rerunLoading || isAnalysisRunning}
                   >
-                    {sev === 'all' ? 'All' : `${sev} (${severityCounts[sev] || 0})`}
+                    {rerunLoading ? (
+                      <>
+                        <Loader2 size={14} className="editor-btn-spin" />
+                        Re-running...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCw size={14} />
+                        Force Re-run
+                      </>
+                    )}
                   </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          
-          <div className="issues-list">
-            <AnimatePresence>
-              {Object.entries(issuesByFile).map(([filePath, fileIssues]) => (
-                <motion.div 
-                  key={filePath} 
-                  className="issue-file-group"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                >
-                  <button 
-                    className="file-group-header"
-                    onClick={() => toggleFile(filePath)}
-                  >
-                    {expandedFiles.has(filePath) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <FileCode size={16} />
-                    <span className="file-path">{filePath}</span>
-                    <span className="file-issue-count">{fileIssues.length}</span>
-                  </button>
-                  
                   <AnimatePresence>
-                    {expandedFiles.has(filePath) && (
+                    {rerunConfirmOpen && (
                       <motion.div
-                        className="file-issues"
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        ref={rerunMenuRef}
+                        className="rerun-popover"
+                        initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                        transition={{ duration: 0.18 }}
                       >
-                        {fileIssues.map((issue) => (
-                          <div key={issue.id} className="issue-item">
-                            <div className={`severity-dot ${issue.severity}`} />
-                            <div className="issue-content">
-                              <div className="issue-header-row">
-                                <span className={`badge badge-${issue.severity}`}>
-                                  <SeverityIcon severity={issue.severity} />
-                                  {issue.severity}
-                                </span>
-                                <span className="issue-type">{issue.defect_family || 'unknown'}</span>
-                                <span className="issue-line">Line {issue.line_number}</span>
-                              </div>
-                              <p className="issue-message">{issue.message}</p>
-                              {issue.code_snippet && (
-                                <pre className="issue-snippet"><code>{issue.code_snippet}</code></pre>
-                              )}
-                              <div className="issue-actions">
-                                <button
-                                  className="trace-btn"
-                                  onClick={() => setArchaeologyTarget({
-                                    filePath: issue.file_path,
-                                    lineNumber: issue.line_number,
-                                    defectFamily: issue.defect_family || 'unknown',
-                                  })}
-                                >
-                                  <Microscope size={13} />
-                                  Trace Origin
-                                </button>
-                                <button
-                                  className="ai-fix-btn"
-                                  onClick={() => setAiTarget(issue)}
-                                >
-                                  <Brain size={13} />
-                                  AI Fix
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                        <div className="rerun-title">Start a new snapshot?</div>
+                        <div className="rerun-text">This creates a fresh analysis run and keeps history.</div>
+                        <div className="rerun-actions">
+                          <button className="rerun-cancel" onClick={() => setRerunConfirmOpen(false)}>Cancel</button>
+                          <button className="rerun-confirm" onClick={handleForceRerun}>Re-run now</button>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            
-            {filteredIssues.length === 0 && (
-              <div className="no-issues">
-                <CheckCircle2 size={32} color="var(--ca-success)" />
-                <p>{searchQuery || severityFilter !== 'all' ? 'No issues match your filters' : 'No issues found! 🎉'}</p>
-              </div>
-            )}
+                </div>
+              )}
+
+              <button
+                className="open-editor-btn"
+                onClick={handleOpenEditor}
+                disabled={editorLoading}
+              >
+                {editorLoading ? (
+                  <>
+                    <Loader2 size={14} className="editor-btn-spin" />
+                    Loading Editor...
+                  </>
+                ) : (
+                  <>
+                    <Code2 size={14} />
+                    Open in Editor
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </motion.div>
+
+          {/* Error Banner — shown when analysis errored after Phase 1 */}
+          {errorBanner && !errorBannerDismissed && (
+            <motion.div
+              className="error-banner"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: '12px',
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: 'var(--ca-radius)',
+                padding: '14px 18px',
+                marginBottom: '20px',
+                borderLeft: '4px solid #ef4444',
+              }}
+            >
+              <AlertTriangle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: '#ef4444', fontSize: '0.9rem', marginBottom: 2 }}>Analysis Error (Partial Results)</div>
+                <div style={{ color: 'var(--ca-text-secondary)', fontSize: '0.82rem', lineHeight: 1.5 }}>{errorBanner}</div>
+                <div style={{ color: 'var(--ca-text-muted)', fontSize: '0.75rem', marginTop: 4 }}>Static analysis completed — results below may be partial.</div>
+              </div>
+              <button
+                onClick={() => setErrorBannerDismissed(true)}
+                style={{ background: 'none', border: 'none', color: 'var(--ca-text-muted)', cursor: 'pointer', padding: 4, borderRadius: 6, flexShrink: 0 }}
+              >
+                <X size={16} />
+              </button>
+            </motion.div>
+          )}
+
+          {/* AI Summary Block — Premium Markdown Panel */}
+          {(aiSummary || analysisStatus === 'ai_scanning' || aiSummaryError) && (
+            <motion.div
+              className="ai-summary-panel"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              style={{ marginBottom: '32px' }}
+            >
+              {/* Panel Header */}
+              <div className="ai-summary-header">
+                <div className="ai-summary-header-left">
+                  <div className="ai-summary-icon">
+                    <Brain size={18} />
+                  </div>
+                  <div>
+                    <div className="ai-summary-title">AI Executive Summary</div>
+                    <div className="ai-summary-subtitle">Generated by {aiModelMeta}</div>
+                  </div>
+                </div>
+                <div className="ai-summary-status">
+                  {analysisStatus === 'ai_scanning' ? (
+                    <>
+                      <Loader2 size={14} className="spin" />
+                      <span>Generating...</span>
+                    </>
+                  ) : aiSummaryError ? (
+                    <>
+                      <AlertTriangle size={14} />
+                      <span>{aiSummaryStatus === 'unavailable' ? 'Unavailable' : 'Warning'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      <span>Complete</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Markdown Content Body */}
+              <div className="ai-summary-body">
+                {aiSummary ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ children }) => <h1 className="ai-md-h1">{children}</h1>,
+                      h2: ({ children }) => <h2 className="ai-md-h2">{children}</h2>,
+                      h3: ({ children }) => <h3 className="ai-md-h3">{children}</h3>,
+                      p: ({ children }) => <p className="ai-md-p">{children}</p>,
+                      ul: ({ children }) => <ul className="ai-md-ul">{children}</ul>,
+                      ol: ({ children }) => <ol className="ai-md-ol">{children}</ol>,
+                      li: ({ children }) => <li className="ai-md-li">{children}</li>,
+                      code: ({ inline, className, children, ...props }) => {
+                        if (inline) {
+                          return <code className="ai-md-inline-code" {...props}>{children}</code>;
+                        }
+                        return (
+                          <div className="ai-md-code-block">
+                            <pre><code className={className} {...props}>{children}</code></pre>
+                          </div>
+                        );
+                      },
+                      blockquote: ({ children }) => <blockquote className="ai-md-blockquote">{children}</blockquote>,
+                      strong: ({ children }) => <strong className="ai-md-strong">{children}</strong>,
+                      em: ({ children }) => <em className="ai-md-em">{children}</em>,
+                      hr: () => <hr className="ai-md-hr" />,
+                      a: ({ href, children }) => <a href={href} className="ai-md-link" target="_blank" rel="noopener noreferrer">{children}</a>,
+                      table: ({ children }) => <div className="ai-md-table-wrap"><table className="ai-md-table">{children}</table></div>,
+                      th: ({ children }) => <th className="ai-md-th">{children}</th>,
+                      td: ({ children }) => <td className="ai-md-td">{children}</td>,
+                    }}
+                  >
+                    {aiSummary}
+                  </ReactMarkdown>
+                ) : aiSummaryError ? (
+                  <div className="ai-summary-warning">
+                    <AlertTriangle size={18} />
+                    <div>
+                      <div className="ai-summary-warning-title">AI summary unavailable</div>
+                      <div className="ai-summary-warning-text">{aiSummaryError}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="ai-summary-placeholder">
+                    <div className="ai-summary-placeholder-text">Analyzing codebase patterns and compiling executive summary...</div>
+                  </div>
+                )}
+                {/* Blinking cursor while streaming */}
+                {analysisStatus === 'ai_scanning' && (
+                  <span className="ai-stream-cursor" />
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Stats Cards */}
+          <motion.div
+            className="stats-grid"
+            initial="hidden"
+            animate="visible"
+            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08 } } }}
+          >
+            {/* Health Score */}
+            <motion.div className="stat-card health-score-card" variants={cardVariants}>
+              <div className="health-score-circle" style={{ '--score-color': getScoreColor(finalHealthScore) }}>
+                <svg viewBox="0 0 120 120" className="score-ring">
+                  <circle cx="60" cy="60" r="52" fill="none" stroke="var(--ca-border)" strokeWidth="8" />
+                  <circle
+                    cx="60" cy="60" r="52" fill="none"
+                    stroke={getScoreColor(finalHealthScore)}
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray={`${(finalHealthScore / 100) * 327} 327`}
+                    transform="rotate(-90 60 60)"
+                    style={{ transition: 'stroke-dasharray 1s ease-out' }}
+                  />
+                </svg>
+                <div className="score-value">
+                  <span className="score-number">{finalHealthScore}</span>
+                  <span className="score-grade">{getGrade(finalHealthScore)}</span>
+                </div>
+              </div>
+              <div className="stat-label">Health Score</div>
+            </motion.div>
+
+            {/* Issues Count */}
+            <motion.div className="stat-card" variants={cardVariants}>
+              <div className="stat-icon" style={{ background: 'linear-gradient(135deg, #ef4444, #f97316)' }}>
+                <Bug size={22} />
+              </div>
+              <div className="stat-value">{finalTotalIssues}</div>
+              <div className="stat-label">Issues Found</div>
+              <div className="severity-mini-bar">
+                {Object.entries(severityCounts).map(([sev, count]) => (
+                  count > 0 && <span key={sev} className={`badge badge-${sev}`}>{count} {sev}</span>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Files Count */}
+            <motion.div className="stat-card" variants={cardVariants}>
+              <div className="stat-icon" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+                <FileCode size={22} />
+              </div>
+              <div className="stat-value">{finalFileCount}</div>
+              <div className="stat-label">Files Analyzed</div>
+              <div className="stat-detail">{finalTotalLines?.toLocaleString()} lines of code</div>
+            </motion.div>
+
+            {/* Languages */}
+            <motion.div className="stat-card" variants={cardVariants}>
+              <div className="stat-icon" style={{ background: 'linear-gradient(135deg, #06b6d4, #10b981)' }}>
+                <Code2 size={22} />
+              </div>
+              <div className="stat-value">{Object.keys(finalLanguages || {}).length}</div>
+              <div className="stat-label">Languages</div>
+              <div className="stat-detail">
+                {Object.entries(finalLanguages || {}).slice(0, 3).map(([lang, count]) => (
+                  <span key={lang} className="lang-chip">{lang}: {count}</span>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+
+          {/* Charts Section: Commit History and User Stats */}
+          {(commitChartData.length > 0 || userStatsData.length > 0) && (
+            <motion.div
+              className="charts-grid"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                gap: '24px',
+                marginBottom: '32px'
+              }}
+            >
+              {commitChartData.length > 0 && (
+                <div className="card" style={{ padding: '24px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--ca-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <GitBranch size={16} />
+                    Issues by Origin Commit Date
+                  </h3>
+                  <div style={{ width: '100%', height: 250 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={commitChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--ca-border)" vertical={false} />
+                        <XAxis dataKey="date" stroke="var(--ca-text-muted)" fontSize={12} tickMargin={10} minTickGap={30} />
+                        <YAxis stroke="var(--ca-text-muted)" fontSize={12} allowDecimals={false} />
+                        <RechartsTooltip
+                          contentStyle={{ backgroundColor: 'var(--ca-bg-elevated)', borderColor: 'var(--ca-border)', borderRadius: '8px' }}
+                          itemStyle={{ color: 'var(--ca-text)' }}
+                        />
+                        <Line type="monotone" dataKey="issues" stroke="var(--ca-accent)" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {userStatsData.length > 0 && (
+                <div className="card" style={{ padding: '24px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--ca-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Shield size={16} />
+                    Issues by Author
+                  </h3>
+                  <div style={{ width: '100%', height: 250 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={userStatsData} layout="vertical" margin={{ top: 0, right: 0, left: 30, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--ca-border)" horizontal={false} />
+                        <XAxis type="number" stroke="var(--ca-text-muted)" fontSize={12} allowDecimals={false} />
+                        <YAxis type="category" dataKey="author" stroke="var(--ca-text-muted)" fontSize={12} width={100} />
+                        <RechartsTooltip
+                          cursor={{ fill: 'var(--ca-bg-hover)' }}
+                          contentStyle={{ backgroundColor: 'var(--ca-bg-elevated)', borderColor: 'var(--ca-border)', borderRadius: '8px' }}
+                          itemStyle={{ color: 'var(--ca-text)' }}
+                        />
+                        <Bar dataKey="count" fill="var(--ca-high)" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Issues Panel */}
+          <motion.div
+            className="issues-panel card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <div className="issues-panel-header">
+              <h2>
+                <Shield size={20} />
+                <span>Issues Found</span>
+                <span className="issue-count-badge">{filteredIssues.length}</span>
+              </h2>
+
+              <div className="issues-filters">
+                <div className="filter-search">
+                  <Search size={16} />
+                  <input
+                    type="text"
+                    placeholder="Search issues..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+
+                <div className="filter-severity">
+                  {['all', 'blocker', 'critical', 'high', 'medium', 'low', 'info', 'trace'].map(sev => (
+                    <button
+                      key={sev}
+                      className={`filter-btn ${severityFilter === sev ? 'active' : ''} ${sev !== 'all' ? `filter-${sev}` : ''}`}
+                      onClick={() => setSeverityFilter(sev)}
+                    >
+                      {sev === 'all' ? 'All' : `${sev} (${severityCounts[sev] || 0})`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="issues-list">
+              <AnimatePresence>
+                {Object.entries(issuesByFile).map(([filePath, fileIssues]) => (
+                  <motion.div
+                    key={filePath}
+                    className="issue-file-group"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                  >
+                    <button
+                      className="file-group-header"
+                      onClick={() => toggleFile(filePath)}
+                    >
+                      {expandedFiles.has(filePath) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      <FileCode size={16} />
+                      <span className="file-path">{filePath}</span>
+                      <span className="file-issue-count">{fileIssues.length}</span>
+                    </button>
+
+                    <AnimatePresence>
+                      {expandedFiles.has(filePath) && (
+                        <motion.div
+                          className="file-issues"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          {fileIssues.map((issue) => (
+                            <div key={issue.id} className="issue-item">
+                              <div className={`severity-dot ${issue.severity}`} />
+                              <div className="issue-content">
+                                <div className="issue-header-row">
+                                  <span className={`badge badge-${issue.severity}`}>
+                                    <SeverityIcon severity={issue.severity} />
+                                    {issue.severity}
+                                  </span>
+                                  <span className="issue-type">{issue.defect_family || 'unknown'}</span>
+                                  <span className="issue-line">Line {issue.line_number}</span>
+                                </div>
+
+                                {issue.origin_author_name && (
+                                  <div className="issue-author-row" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.75rem', color: 'var(--ca-text-muted)' }}>
+                                    <Clock size={12} />
+                                    <span style={{ fontWeight: 600, color: 'var(--ca-text-secondary)' }}>{issue.origin_author_name}</span>
+                                    {issue.origin_author_email && <span>&lt;{issue.origin_author_email}&gt;</span>}
+                                    {issue.origin_commit && <span style={{ marginLeft: '4px', padding: '1px 5px', background: 'var(--ca-bg-secondary)', borderRadius: '4px', fontSize: '0.7rem' }}>{issue.origin_commit}</span>}
+                                  </div>
+                                )}
+
+                                <p className="issue-message">{issue.message}</p>
+                                {issue.code_snippet && (
+                                  <pre className="issue-snippet"><code>{issue.code_snippet}</code></pre>
+                                )}
+                                <div className="issue-actions">
+                                  <button
+                                    className="trace-btn"
+                                    onClick={() => setArchaeologyTarget({
+                                      filePath: issue.file_path,
+                                      lineNumber: issue.line_number,
+                                      defectFamily: issue.defect_family || 'unknown',
+                                    })}
+                                  >
+                                    <Microscope size={13} />
+                                    Trace Origin
+                                  </button>
+                                  <button
+                                    className="ai-fix-btn"
+                                    onClick={() => setAiTarget(issue)}
+                                  >
+                                    <Brain size={13} />
+                                    AI Fix
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {filteredIssues.length === 0 && (
+                <div className="no-issues">
+                  <CheckCircle2 size={32} color="var(--ca-success)" />
+                  <p>{searchQuery || severityFilter !== 'all' ? 'No issues match your filters' : 'No issues found! 🎉'}</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+
+          {/* ─── Contributors Table ─── */}
+          <motion.div
+            className="contributors-panel card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            style={{ marginTop: '32px', padding: '24px' }}
+          >
+            <div className="panel-header" style={{ marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--ca-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <User size={18} />
+                <span>Full Contributor Breakdown</span>
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--ca-text-muted)', marginTop: '4px' }}>
+                Detailed defect attribution across all developers in this snapshot.
+              </p>
+            </div>
+
+            <div className="contributors-table-wrap" style={{ overflowX: 'auto' }}>
+              <table className="contributors-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--ca-border)' }}>
+                    <th style={{ padding: '12px 16px', color: 'var(--ca-text-muted)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase' }}>Developer</th>
+                    <th style={{ padding: '12px 16px', color: 'var(--ca-text-muted)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase' }}>Email</th>
+                    <th style={{ padding: '12px 16px', color: 'var(--ca-text-muted)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', textAlign: 'center' }}>Total Issues</th>
+                    <th style={{ padding: '12px 16px', color: 'var(--ca-text-muted)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', textAlign: 'right' }}>% of Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {userStatsData.map((stat, idx) => {
+                    const email = stat.full?.match(/<(.+)>|$/)?.[1] || '';
+                    const totalIssuesCount = issues.length || 1;
+                    const percentage = ((stat.count / totalIssuesCount) * 100).toFixed(1);
+
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid rgba(99,102,241,0.05)', transition: 'background 0.2s' }} className="contributor-row">
+                        <td style={{ padding: '14px 16px', fontWeight: 600, color: 'var(--ca-text)' }}>{stat.author}</td>
+                        <td style={{ padding: '14px 16px', color: 'var(--ca-text-secondary)', fontFamily: 'var(--ca-font-mono)', fontSize: '0.8rem' }}>{email}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                          <span style={{
+                            background: stat.count > 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--ca-bg-secondary)',
+                            color: stat.count > 0 ? '#ef4444' : 'var(--ca-text-muted)',
+                            padding: '2px 10px',
+                            borderRadius: '9999px',
+                            fontWeight: 700,
+                            fontSize: '0.8rem'
+                          }}>
+                            {stat.count}
+                          </span>
+                        </td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', color: 'var(--ca-text-muted)', fontWeight: 500 }}>
+                          {percentage}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Archaeology Panel Modal */}
+        {archaeologyTarget && (
+          <ArchaeologyPanel
+            analysisId={analysisId}
+            filePath={archaeologyTarget.filePath}
+            lineNumber={archaeologyTarget.lineNumber}
+            defectFamily={archaeologyTarget.defectFamily}
+            onClose={() => setArchaeologyTarget(null)}
+          />
+        )}
+
+        {/* AI Analysis Panel */}
+        {aiTarget && (
+          <AIPanel
+            issue={aiTarget}
+            onClose={() => setAiTarget(null)}
+          />
+        )}
+
+        <style>{dashboardStyles}</style>
       </div>
-
-      {/* Archaeology Panel Modal */}
-      {archaeologyTarget && (
-        <ArchaeologyPanel
-          analysisId={analysisId}
-          filePath={archaeologyTarget.filePath}
-          lineNumber={archaeologyTarget.lineNumber}
-          defectFamily={archaeologyTarget.defectFamily}
-          onClose={() => setArchaeologyTarget(null)}
-        />
-      )}
-
-      {/* AI Analysis Panel */}
-      {aiTarget && (
-        <AIPanel
-          issue={aiTarget}
-          onClose={() => setAiTarget(null)}
-        />
-      )}
-      
-      <style>{dashboardStyles}</style>
-    </div>
     </>
   );
 }

@@ -41,6 +41,7 @@ class AnalysisResult(Base):
     issues = Column(Text, default="[]")           # JSON string
     file_tree = Column(Text, default="[]")        # JSON string
     ollama_findings = Column(Text, default="[]")  # JSON: local AI analysis results
+    contributor_stats = Column(Text, default="{}") # JSON: summarized stats per author
     ai_summary = Column(Text, nullable=True)      # Live summary of static issues
     error_message = Column(String(2000), nullable=True)
     commit_sha = Column(String(64), nullable=True)  # HEAD SHA at analysis time
@@ -100,6 +101,15 @@ class AnalysisResult(Base):
 
     def set_ollama_findings(self, findings: list) -> None:
         self.ollama_findings = json.dumps(findings, default=str)
+
+    def get_contributor_stats(self) -> dict:
+        try:
+            return json.loads(self.contributor_stats) if self.contributor_stats else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def set_contributor_stats(self, stats: dict) -> None:
+        self.contributor_stats = json.dumps(stats, default=str)
         
     def get_ai_summary(self) -> str:
         return self.ai_summary or ""

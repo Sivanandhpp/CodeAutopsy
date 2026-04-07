@@ -300,6 +300,15 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
         })
         await asyncio.to_thread(git_service.get_issue_blame_batch, repo_path, issues)
 
+        # Calculate contributor stats
+        contributor_stats: dict[str, dict] = {}
+        for issue in issues:
+            email = issue.get("origin_author_email", "unknown@example.com")
+            name = issue.get("origin_author_name", "Unknown")
+            if email not in contributor_stats:
+                contributor_stats[email] = {"name": name, "email": email, "count": 0}
+            contributor_stats[email]["count"] += 1
+
         # Add issue counts to file tree
         issue_counts: dict[str, int] = {}
         for issue in issues:
@@ -335,6 +344,7 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
             record.set_languages(languages)
             record.set_issues(issues)
             record.set_file_tree(file_tree)
+            record.set_contributor_stats(contributor_stats)
             await db.commit()
 
         # ═══════════════════════════════════════════════════════
@@ -463,6 +473,11 @@ def _normalize_issue(issue: dict) -> dict:
     data.setdefault("cwe_id", None)
     data.setdefault("owasp_ref", None)
     data.setdefault("code_snippet", "")
+    data.setdefault("origin_author_name", None)
+    data.setdefault("origin_author_email", None)
+    data.setdefault("origin_author", None)
+    data.setdefault("origin_commit", None)
+    data.setdefault("origin_date", None)
     return data
 
 
@@ -704,6 +719,7 @@ async def get_results(
         issues=[IssueDetail(**i) for i in normalized_issues],
         file_tree=record.get_file_tree(),
         ollama_findings=[],
+        contributor_stats=record.get_contributor_stats(),
         ai_summary=ai_summary,
         error_message=record.error_message,
         created_at=record.created_at.isoformat() if record.created_at else None,
