@@ -230,6 +230,51 @@ class GitService:
         if repo_path and os.path.exists(repo_path):
             shutil.rmtree(repo_path, ignore_errors=True)
 
+    def get_issue_blame_batch(self, repo_path: str, issues: list[dict]) -> None:
+        """Enrich a list of issues with origin commit, author, and date using git blame in batch."""
+        import hashlib
+        from datetime import datetime, timezone
+        try:
+            repo = Repo(repo_path)
+        except Exception:
+            return
+
+        blame_cache = {}
+        for issue in issues:
+            file_path = issue.get('file_path')
+            line_num = issue.get('line_number', 0)
+            if not file_path or line_num <= 0:
+                continue
+
+            if file_path not in blame_cache:
+                try:
+                    blame_cache[file_path] = repo.blame('HEAD', file_path)
+                except Exception:
+                    blame_cache[file_path] = None
+            
+            blame_data = blame_cache[file_path]
+            if not blame_data:
+                continue
+
+            current_line = 0
+            found = False
+            for commit, lines in blame_data:
+                for _ in lines:
+                    current_line += 1
+                    if current_line == line_num:
+                        a_name = commit.author.name if commit.author and commit.author.name else "Unknown"
+                        a_email = commit.author.email if commit.author and commit.author.email else "unknown@example.com"
+                        issue['origin_commit'] = commit.hexsha[:8]
+                        issue['origin_author'] = f"{a_name} <{a_email}>"
+                        
+                        date_str = datetime.fromtimestamp(commit.committed_date, tz=timezone.utc).isoformat()
+                        issue['origin_date'] = date_str
+                        found = True
+                        break
+                if found:
+                    break
+
+
 
 # Singleton instance
 git_service = GitService()

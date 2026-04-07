@@ -168,6 +168,11 @@ class OllamaProvider(AIProvider):
         settings = get_settings()
         self._cancelled = False
 
+        await send_event("ai_model_active", {
+            "provider": self.name,
+            "model": settings.OLLAMA_MODEL,
+        })
+
         await send_event("ai_summary_start", {
             "message": "Generating AI summary of findings...",
         })

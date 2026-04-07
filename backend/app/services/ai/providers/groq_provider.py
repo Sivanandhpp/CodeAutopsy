@@ -151,6 +151,11 @@ class GroqProvider(AIProvider):
         """Stream an executive summary via Groq chat completion."""
         settings = get_settings()
 
+        await send_event("ai_model_active", {
+            "provider": self.name,
+            "model": settings.GROQ_MODEL,
+        })
+
         await send_event("ai_summary_start", {
             "message": "Generating AI summary of findings...",
         })

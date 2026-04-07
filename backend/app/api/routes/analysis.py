@@ -293,6 +293,13 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
         # Calculate health score immediately (Phase 1 result)
         health_score = static_analyzer.calculate_health_score(issues)
 
+        # Enhance issues with batch git blame
+        await _emit_event(analysis_id, "status", {
+            "status": "analyzing", "progress": 45,
+            "message": "Enriching issues with git history...", "step": "git_blame",
+        })
+        await asyncio.to_thread(git_service.get_issue_blame_batch, repo_path, issues)
+
         # Add issue counts to file tree
         issue_counts: dict[str, int] = {}
         for issue in issues:
@@ -344,8 +351,18 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
             await _emit_event(analysis_id, event_type, data)
 
         ai_summary_text: str = ""
+        model_info: str = "Local AI"
         try:
             gateway = get_ai_gateway()
+            
+            # Predict the model info that will be used
+            providers = gateway._ordered_providers()
+            if providers:
+                p = providers[0]
+                from app.config import get_settings
+                m_str = get_settings().GROQ_MODEL if p.name == "Groq" else get_settings().OLLAMA_MODEL
+                model_info = f"{p.name} - {m_str}"
+
             ai_summary_text = await gateway.stream_summary(issues, send_ai_event)
         except Exception as e:
             logger.warning(f"AI summary failed (non-fatal): {e}")
@@ -365,6 +382,12 @@ async def _execute_analysis(analysis_id: str, repo_url: str, db: AsyncSession):
         if record:
             record.status = "complete"
             record.set_ai_summary(ai_summary_text)
+            
+            # Save the guessed model info so we have it on reload
+            findings = record.get_ollama_findings()
+            findings.append({"type": "ai_meta", "model_info": model_info})
+            record.set_ollama_findings(findings)
+
             record.completed_at = datetime.now(timezone.utc)
 
             # Update project's last commit SHA
