@@ -13,6 +13,7 @@ import LandingPage from './pages/LandingPage';
 import DashboardPage from './pages/DashboardPage';
 import AnalysisPage from './pages/AnalysisPage';
 import EditorPage from './pages/EditorPage';
+import AdminPage from './pages/AdminPage';
 import useAuthStore from './lib/authStore';
 
 /**
@@ -21,6 +22,16 @@ import useAuthStore from './lib/authStore';
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/" replace />;
+  return children;
+}
+
+/**
+ * Admin route wrapper — redirects to /dashboard if not admin.
+ */
+function AdminRoute({ children }) {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/" replace />;
+  if (!user?.is_admin) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
@@ -53,6 +64,16 @@ function AppLayout() {
               <ProtectedRoute>
                 <DashboardPage />
               </ProtectedRoute>
+            }
+          />
+
+          {/* Admin Panel — protected */}
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminPage />
+              </AdminRoute>
             }
           />
 

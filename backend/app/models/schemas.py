@@ -465,3 +465,89 @@ class ProgressUpdate(BaseModel):
     progress: int = 0
     message: str = ""
     current_step: str = ""
+
+
+# ═════════════════════════════════════════════════════════════
+# ADMIN SCHEMAS
+# ═════════════════════════════════════════════════════════════
+
+
+class AdminProjectBase(BaseModel):
+    id: UUID
+    repo_url: str
+    repo_name: Optional[str] = None
+
+
+class AdminUserResponse(BaseModel):
+    """Admin view of a user with storage and project stats."""
+    id: UUID
+    username: str
+    email: str
+    is_admin: bool
+    created_at: Optional[datetime] = None
+    repo_count: int = 0
+    storage_used_bytes: int = 0
+    projects: list[AdminProjectBase] = []
+
+    class Config:
+        from_attributes = True
+
+
+class AdminUserListResponse(BaseModel):
+    users: list[AdminUserResponse] = []
+    total: int = 0
+
+
+class AdminRepoUserBase(BaseModel):
+    id: UUID
+    username: str
+    email: str
+
+
+class AdminRepoResponse(BaseModel):
+    """Admin view of a project/repo with storage and user details."""
+    id: UUID
+    repo_url: str
+    repo_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    storage_used_bytes: int = 0
+    last_analyzed_at: Optional[datetime] = None
+    total_issues: int = 0
+    users: list[AdminRepoUserBase] = []
+
+    class Config:
+        from_attributes = True
+
+
+class AdminRepoListResponse(BaseModel):
+    repos: list[AdminRepoResponse] = []
+    total: int = 0
+
+
+class AdminStatsResponse(BaseModel):
+    """Global system stats."""
+    total_users: int = 0
+    total_repos: int = 0
+    total_analyses: int = 0
+    total_storage_bytes: int = 0
+
+
+class AdminAuditLogResponse(BaseModel):
+    """Single audit log entry."""
+    id: UUID
+    admin_id: Optional[UUID] = None
+    admin_username: Optional[str] = None
+    action: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    details: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AdminAuditLogListResponse(BaseModel):
+    logs: list[AdminAuditLogResponse] = []
+    total: int = 0

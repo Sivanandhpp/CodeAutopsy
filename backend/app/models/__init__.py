@@ -9,6 +9,7 @@ from app.models.project import Project, UserProject
 from app.models.otp import OTP
 from app.models.analysis import AnalysisResult
 from app.models.analysis_rule import AnalysisRule
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "User",
@@ -17,4 +18,5 @@ __all__ = [
     "OTP",
     "AnalysisResult",
     "AnalysisRule",
+    "AuditLog",
 ]

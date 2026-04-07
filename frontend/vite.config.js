@@ -30,14 +30,7 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        // Chunk splitting avoids one massive JS file hitting the browser at once
-        manualChunks: {
-          'react-core': ['react', 'react-dom', 'react-router-dom'],
-          'ui-tools': ['framer-motion', 'lucide-react', 'clsx', 'tailwind-merge'],
-          'code-editor': ['@monaco-editor/react'],
-          'charts': ['d3', 'recharts'],
-          'markdown': ['react-markdown', 'remark-gfm'],
-        },
+        // manualChunks removed for debugging
       },
     },
     chunkSizeWarningLimit: 1000, // Increased limit due to heavy viz libraries

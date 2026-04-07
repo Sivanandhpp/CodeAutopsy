@@ -25,6 +25,7 @@ from app.api.routes.archaeology import router as archaeology_router
 from app.api.routes.ai import router as ai_router
 from app.api.routes.report import router as report_router
 from app.api.routes.rules import router as rules_router
+from app.api.routes.admin import router as admin_router
 
 # Configure logging
 logging.basicConfig(
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_router)
     app.include_router(report_router)
     app.include_router(rules_router)
+    app.include_router(admin_router)
 
     return app
 

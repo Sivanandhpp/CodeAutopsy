@@ -13,7 +13,7 @@ import {
   ChevronRight, ChevronDown, Filter, Search, Clock,
   Code2, GitBranch, Brain, Eye, Zap, Microscope, ExternalLink,
   AlertCircle, Info, CheckCircle2, Loader2, Download, X, Sparkles,
-  RotateCw, FileText,
+  RotateCw, FileText, User,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip,

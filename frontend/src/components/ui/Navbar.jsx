@@ -5,7 +5,7 @@
 
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sun, Moon, LogOut, LayoutDashboard } from 'lucide-react';
+import { Sun, Moon, LogOut, LayoutDashboard, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useThemeStore from '../../lib/themeStore';
 import useAuthStore from '../../lib/authStore';
@@ -58,6 +58,12 @@ export default function Navbar() {
           {isAuthenticated ? (
             /* Authenticated — show user info */
             <>
+              {user?.is_admin && (
+                <Link to="/admin" className="ca-nav-admin" title="Admin Panel">
+                  <Shield size={16} />
+                </Link>
+              )}
+
               <Link to="/dashboard" className="ca-nav-dashboard" title="Dashboard">
                 <LayoutDashboard size={16} />
               </Link>
@@ -167,7 +173,8 @@ export default function Navbar() {
         }
 
         /* Authenticated user elements */
-        .ca-nav-dashboard {
+        .ca-nav-dashboard,
+        .ca-nav-admin {
           display: flex;
           align-items: center;
           justify-content: center;
@@ -180,7 +187,8 @@ export default function Navbar() {
           text-decoration: none;
           transition: all 0.15s;
         }
-        .ca-nav-dashboard:hover {
+        .ca-nav-dashboard:hover,
+        .ca-nav-admin:hover {
           border-color: var(--ca-primary);
           color: var(--ca-primary);
         }

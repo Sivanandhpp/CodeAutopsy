@@ -398,4 +398,74 @@ export async function deleteProject(projectId) {
   return response.data;
 }
 
+// ═════════════════════════════════════════════════════════════
+// ADMIN API
+// ═════════════════════════════════════════════════════════════
+
+export async function getAdminStats() {
+  const response = await api.get('/api/admin/stats');
+  return response.data;
+}
+
+export async function getAdminUsers() {
+  const response = await api.get('/api/admin/users');
+  return response.data;
+}
+
+export async function adminDeleteUser(userId) {
+  const response = await api.delete(`/api/admin/users/${userId}`);
+  return response.data;
+}
+
+export async function getAdminRepos() {
+  const response = await api.get('/api/admin/repos');
+  return response.data;
+}
+
+export async function adminDeleteRepo(projectId) {
+  const response = await api.delete(`/api/admin/repos/${projectId}`);
+  return response.data;
+}
+
+export async function adminDeleteAllRepos() {
+  const response = await api.delete('/api/admin/repos-all');
+  return response.data;
+}
+
+export async function getAdminAuditLogs() {
+  const response = await api.get('/api/admin/audit-logs');
+  return response.data;
+}
+
+export async function getAdminRules() {
+    const response = await api.get('/api/admin/rules');
+    return response.data;
+}
+
+export async function adminBulkImportRulesJson(rules) {
+  const response = await api.post('/api/admin/rules/bulk-json', rules);
+  return response.data;
+}
+
+export async function adminBulkImportRulesCsv(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/api/admin/rules/bulk-csv', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  return response.data;
+}
+
+export async function adminToggleRule(ruleId) {
+    const response = await api.patch(`/api/admin/rules/${ruleId}/toggle`);
+    return response.data;
+}
+
+export async function adminDeleteRule(ruleId) {
+    const response = await api.delete(`/api/admin/rules/${ruleId}`);
+    return response.data;
+}
+
 export default api;

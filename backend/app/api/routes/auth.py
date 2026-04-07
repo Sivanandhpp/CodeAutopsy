@@ -224,6 +224,7 @@ async def register(
             id=user.id,
             username=user.username,
             email=user.email,
+            is_admin=user.is_admin,
             created_at=user.created_at,
         ),
     )
@@ -258,6 +259,7 @@ async def login(
             id=user.id,
             username=user.username,
             email=user.email,
+            is_admin=user.is_admin,
             created_at=user.created_at,
         ),
     )
@@ -351,5 +353,6 @@ async def get_me(user: User = Depends(get_current_user)):
         id=user.id,
         username=user.username,
         email=user.email,
+        is_admin=user.is_admin,
         created_at=user.created_at,
     )
