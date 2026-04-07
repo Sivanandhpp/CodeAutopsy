@@ -242,10 +242,14 @@ async def export_json(
         s = i.get("severity", "info")
         sev_summary[s] = sev_summary.get(s, 0) + 1
 
+    contributor_data = analysis.get_contributor_stats()
+    
+    # Fallback to simple counts if contributor_data is somehow missing
     user_counts = {}
-    for i in issues:
-        author = i.get("origin_author", "unknown")
-        user_counts[author] = user_counts.get(author, 0) + 1
+    if not contributor_data:
+        for i in issues:
+            author = i.get("origin_author", "unknown")
+            user_counts[author] = user_counts.get(author, 0) + 1
 
     analyzed_at = (
         analysis.completed_at.isoformat() if analysis.completed_at
@@ -266,8 +270,9 @@ async def export_json(
             "total_lines": analysis.total_lines or 0,
             "total_issues": analysis.total_issues or 0,
             "severity_summary": sev_summary,
-            "user_stats": user_counts,
+            "user_stats": user_counts if not contributor_data else {k: v.get("count", 0) for k, v in contributor_data.items()},
         },
+        "contributors": contributor_data,
         "issues": issues,
         "ollama_findings": analysis.get_ollama_findings(),
         "file_tree": analysis.get_file_tree(),
@@ -539,7 +544,7 @@ async def export_pdf(
     elems.append(Paragraph("User Statistics & Defect Attribution", S['section']))
     
     # Use pre-calculated stats from the DB if available, otherwise fallback to issues
-    contributor_data = record.get_contributor_stats()
+    contributor_data = analysis.get_contributor_stats()
     
     if not contributor_data and issues:
         # Fallback calculation if stats aren't pre-calculated (for legacy records)
