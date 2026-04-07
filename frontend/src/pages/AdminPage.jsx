@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShieldAlert, Users as UsersIcon, Database, HardDrive, 
   Trash2, RefreshCw, AlertTriangle, AlertCircle, FileJson, 
-  Upload, Terminal, CheckCircle 
+  Upload, Terminal, CheckCircle, Activity, TrendingUp,
+  ChevronRight, Search, MoreHorizontal
 } from 'lucide-react';
 import useAuthStore from '../lib/authStore';
 import { 
@@ -178,95 +179,139 @@ export default function AdminPage() {
     return new Date(dateStr).toLocaleString();
   };
 
+  const tabs = [
+    { id: 'overview', icon: Activity, label: 'Overview' },
+    { id: 'users', icon: UsersIcon, label: 'Users' },
+    { id: 'repos', icon: HardDrive, label: 'Repositories' },
+    { id: 'rules', icon: FileJson, label: 'Rules' },
+    { id: 'audit', icon: Terminal, label: 'Audit Log' },
+  ];
+
   return (
-    <div className="admin-container">
-      <div className="admin-header">
-        <div>
-          <h1 className="admin-title"><ShieldAlert size={28} /> System Administration</h1>
-          <p className="admin-subtitle">Manage users, repositories, analysis rules, and system storage</p>
+    <div className="adm-container">
+      {/* ─── Header ─────────────────────────── */}
+      <div className="adm-header">
+        <div className="adm-header-left">
+          <motion.div className="adm-header-icon"
+            initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}>
+            <ShieldAlert size={22} />
+          </motion.div>
+          <div>
+            <motion.h1 className="adm-title"
+              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1, duration: 0.4 }}>
+              System Administration
+            </motion.h1>
+            <motion.p className="adm-subtitle"
+              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15, duration: 0.4 }}>
+              Manage users, repositories, rules & system storage
+            </motion.p>
+          </div>
         </div>
-        <button className="btn-secondary" onClick={fetchData} title="Refresh Data">
-          <RefreshCw size={16} className={loading ? 'spin' : ''} /> Refresh
-        </button>
+        <motion.button className="adm-refresh-btn" onClick={fetchData} title="Refresh Data"
+          initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+          <RefreshCw size={15} className={loading ? 'spin' : ''} />
+          <span>Refresh</span>
+        </motion.button>
       </div>
 
-      {(error || success) && (
-        <motion.div 
-            className={`admin-notice ${error ? 'admin-error' : 'admin-success'}`}
-            initial={{ opacity: 0, y: -10 }} 
-            animate={{ opacity: 1, y: 0 }}
-        >
-            {error ? <AlertCircle size={18} /> : <CheckCircle size={18} />}
-            <span>{error || success}</span>
-        </motion.div>
-      )}
-
-      {/* Tabs */}
-      <div className="admin-tabs">
-        {[
-          { id: 'overview', icon: Database, label: 'Overview' },
-          { id: 'users', icon: UsersIcon, label: 'Users' },
-          { id: 'repos', icon: HardDrive, label: 'Repositories' },
-          { id: 'rules', icon: FileJson, label: 'Analysis Rules' },
-          { id: 'audit', icon: Terminal, label: 'Audit Log' },
-        ].map(tab => (
-          <button 
-            key={tab.id}
-            className={`admin-tab ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
+      {/* ─── Notices ────────────────────────── */}
+      <AnimatePresence>
+        {(error || success) && (
+          <motion.div 
+            className={`adm-notice ${error ? 'adm-notice-error' : 'adm-notice-success'}`}
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            transition={{ duration: 0.25 }}
           >
-            <tab.icon size={16} /> {tab.label}
-          </button>
-        ))}
+            <div className="adm-notice-icon">
+              {error ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
+            </div>
+            <span>{error || success}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Tabs ───────────────────────────── */}
+      <div className="adm-tabs">
+        <div className="adm-tabs-inner">
+          {tabs.map((tab, i) => (
+            <motion.button 
+              key={tab.id}
+              className={`adm-tab ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 * i, duration: 0.3 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <tab.icon size={15} />
+              <span>{tab.label}</span>
+              {activeTab === tab.id && (
+                <motion.div className="adm-tab-indicator" layoutId="activeTab"
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }} />
+              )}
+            </motion.button>
+          ))}
+        </div>
       </div>
 
-      <div className="admin-content card">
+      {/* ─── Content Area ───────────────────── */}
+      <div className="adm-content">
         {loading && !stats && !users.length && !repos.length && !rules.length && !auditLogs.length ? (
-          <div className="admin-loading">
-            <RefreshCw size={32} className="spin" />
+          <div className="adm-loading">
+            <div className="adm-loading-spinner">
+              <RefreshCw size={24} className="spin" />
+            </div>
             <p>Loading {activeTab} data...</p>
           </div>
         ) : (
-          <>
-            {/* OVERVIEW TAB */}
+          <AnimatePresence mode="wait">
+            {/* ═══ OVERVIEW TAB ═══ */}
             {activeTab === 'overview' && stats && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="admin-overview">
-                <div className="admin-stats-grid">
-                  <div className="admin-stat-card glow-effect">
-                    <div className="stat-icon users"><UsersIcon size={24} /></div>
-                    <div className="stat-info">
-                      <span className="stat-value">{stats.total_users}</span>
-                      <span className="stat-label">Total Users</span>
-                    </div>
-                  </div>
-                  <div className="admin-stat-card glow-effect">
-                    <div className="stat-icon repos"><HardDrive size={24} /></div>
-                    <div className="stat-info">
-                      <span className="stat-value">{stats.total_projects}</span>
-                      <span className="stat-label">Total Repositories</span>
-                    </div>
-                  </div>
-                  <div className="admin-stat-card glow-effect">
-                    <div className="stat-icon storage"><Database size={24} /></div>
-                    <div className="stat-info">
-                      <span className="stat-value">{formatBytes(stats.total_storage_bytes)}</span>
-                      <span className="stat-label">Storage Used</span>
-                    </div>
-                  </div>
-                  <div className="admin-stat-card glow-effect">
-                    <div className="stat-icon analyses"><FileJson size={24} /></div>
-                    <div className="stat-info">
-                      <span className="stat-value">{stats.total_analyses}</span>
-                      <span className="stat-label">Total Analyses</span>
-                    </div>
-                  </div>
+              <motion.div key="overview"
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }}
+                className="adm-overview">
+                
+                <div className="adm-stats-grid">
+                  {[
+                    { icon: UsersIcon, value: stats.total_users, label: 'Total Users', gradient: 'linear-gradient(135deg, #6366f1, #818cf8)', glow: 'rgba(99, 102, 241, 0.15)' },
+                    { icon: HardDrive, value: stats.total_projects, label: 'Repositories', gradient: 'linear-gradient(135deg, #10b981, #34d399)', glow: 'rgba(16, 185, 129, 0.15)' },
+                    { icon: Database, value: formatBytes(stats.total_storage_bytes), label: 'Storage Used', gradient: 'linear-gradient(135deg, #f97316, #fb923c)', glow: 'rgba(249, 115, 22, 0.15)' },
+                    { icon: FileJson, value: stats.total_analyses, label: 'Total Analyses', gradient: 'linear-gradient(135deg, #06b6d4, #22d3ee)', glow: 'rgba(6, 182, 212, 0.15)' },
+                  ].map((card, i) => (
+                    <motion.div className="adm-stat-card" key={card.label}
+                      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.08 * i, duration: 0.4 }}
+                      style={{ '--card-glow': card.glow }}>
+                      <div className="adm-stat-card-icon" style={{ background: card.gradient }}>
+                        <card.icon size={20} />
+                      </div>
+                      <div className="adm-stat-card-body">
+                        <span className="adm-stat-card-value">{card.value}</span>
+                        <span className="adm-stat-card-label">{card.label}</span>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
 
-                <div className="admin-section mt-8">
-                  <h3 className="section-title">Recent Activity</h3>
+                <div className="adm-section">
+                  <div className="adm-section-header">
+                    <h3 className="adm-section-title">
+                      <TrendingUp size={16} /> Recent Activity
+                    </h3>
+                    <button className="adm-section-link" onClick={() => setActiveTab('audit')}>
+                      View all <ChevronRight size={14} />
+                    </button>
+                  </div>
                   {auditLogs.length > 0 ? (
-                    <div className="table-container">
-                      <table className="admin-table">
+                    <div className="adm-table-wrap">
+                      <table className="adm-table">
                         <thead>
                           <tr>
                             <th>Time</th>
@@ -278,57 +323,70 @@ export default function AdminPage() {
                         <tbody>
                           {auditLogs.map((log) => (
                             <tr key={log.id}>
-                              <td>{formatDate(log.created_at)}</td>
-                              <td><span className="badge badge-info">{log.admin_username}</span></td>
-                              <td><span className="badge badge-trace">{log.action}</span></td>
-                              <td className="mono">{log.target_type}: {log.target_id || 'all'}</td>
+                              <td className="adm-cell-time">{formatDate(log.created_at)}</td>
+                              <td><span className="adm-badge adm-badge-purple">{log.admin_username}</span></td>
+                              <td><span className="adm-badge adm-badge-slate">{log.action}</span></td>
+                              <td><span className="adm-cell-mono">{log.target_type}: {log.target_id || 'all'}</span></td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                  ) : <p className="text-muted">No recent activity.</p>}
+                  ) : <p className="adm-empty-text">No recent activity.</p>}
                 </div>
               </motion.div>
             )}
 
-            {/* USERS TAB */}
+            {/* ═══ USERS TAB ═══ */}
             {activeTab === 'users' && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="admin-users">
-                <div className="table-container">
-                  <table className="admin-table">
+              <motion.div key="users"
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }}
+                className="adm-users">
+                <div className="adm-section-header" style={{ marginBottom: 16 }}>
+                  <h3 className="adm-section-title">
+                    <UsersIcon size={16} /> {users.length} Registered User{users.length !== 1 ? 's' : ''}
+                  </h3>
+                </div>
+                <div className="adm-table-wrap">
+                  <table className="adm-table">
                     <thead>
                       <tr>
                         <th>Username</th>
                         <th>Email</th>
                         <th>Joined</th>
                         <th>Repos</th>
-                        <th>Storage Used</th>
-                        <th>Actions</th>
+                        <th>Storage</th>
+                        <th style={{ width: 100 }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {users.map(u => (
-                        <tr key={u.id} className={u.is_admin ? 'is-admin-row' : ''}>
+                        <tr key={u.id} className={u.is_admin ? 'adm-row-admin' : ''}>
                           <td>
-                            {u.username}
-                            {u.is_admin && <span className="badge badge-info ml-2">ADMIN</span>}
+                            <div className="adm-user-cell">
+                              <div className="adm-user-avatar">{u.username.charAt(0).toUpperCase()}</div>
+                              <div>
+                                <span className="adm-user-name">{u.username}</span>
+                                {u.is_admin && <span className="adm-badge adm-badge-purple" style={{ marginLeft: 8, fontSize: '0.65rem' }}>ADMIN</span>}
+                              </div>
+                            </div>
                           </td>
-                          <td>{u.email}</td>
-                          <td>{new Date(u.created_at).toLocaleDateString()}</td>
-                          <td>{u.repo_count}</td>
-                          <td>{formatBytes(u.storage_bytes)}</td>
+                          <td className="adm-cell-secondary">{u.email}</td>
+                          <td className="adm-cell-secondary">{new Date(u.created_at).toLocaleDateString()}</td>
+                          <td><span className="adm-cell-metric">{u.repo_count}</span></td>
+                          <td><span className="adm-cell-metric">{formatBytes(u.storage_bytes)}</span></td>
                           <td>
                             <button 
-                              className="btn-danger-sm"
+                              className="adm-btn-danger-sm"
                               onClick={() => setConfirmModal({
                                 isOpen: true,
                                 data: { type: 'deleteUser', userId: u.id, username: u.username }
                               })}
-                              disabled={u.is_admin || u.id === user?.id} // Prevent deleting admins/self
+                              disabled={u.is_admin || u.id === user?.id}
                               title={u.is_admin ? "Cannot delete admins" : "Delete User"}
                             >
-                              <Trash2 size={14} /> Remove
+                              <Trash2 size={13} /> Remove
                             </button>
                           </td>
                         </tr>
@@ -339,63 +397,71 @@ export default function AdminPage() {
               </motion.div>
             )}
 
-            {/* REPOSITORIES TAB */}
+            {/* ═══ REPOSITORIES TAB ═══ */}
             {activeTab === 'repos' && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="admin-repos">
-                <div className="admin-actions-bar">
-                    <button 
-                        className="btn-danger"
-                        onClick={() => setConfirmModal({
-                            isOpen: true,
-                            data: { type: 'deleteAllRepos' }
-                        })}
-                    >
-                        <AlertTriangle size={16} /> WIPE ALL REPOSITORIES
-                    </button>
+              <motion.div key="repos"
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }}
+                className="adm-repos">
+                <div className="adm-section-header" style={{ marginBottom: 16 }}>
+                  <h3 className="adm-section-title">
+                    <HardDrive size={16} /> {repos.length} Repositor{repos.length !== 1 ? 'ies' : 'y'}
+                  </h3>
+                  <button 
+                    className="adm-btn-nuke"
+                    onClick={() => setConfirmModal({
+                      isOpen: true,
+                      data: { type: 'deleteAllRepos' }
+                    })}
+                  >
+                    <AlertTriangle size={14} /> Wipe All
+                  </button>
                 </div>
                 
-                <div className="table-container mt-4">
-                  <table className="admin-table">
+                <div className="adm-table-wrap">
+                  <table className="adm-table">
                     <thead>
                       <tr>
                         <th>Repository</th>
-                        <th>Users</th>
+                        <th>Collaborators</th>
                         <th>Analyses</th>
-                        <th>Total Issues</th>
+                        <th>Issues</th>
                         <th>Storage</th>
-                        <th>Actions</th>
+                        <th style={{ width: 80 }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {repos.map(r => (
                         <tr key={r.id}>
                           <td>
-                            <strong>{r.repo_name}</strong>
-                            <div className="text-xs text-muted">{r.repo_url}</div>
-                          </td>
-                          <td>
-                            <div className="flex flex-wrap gap-1">
-                                {r.users.map(u => (
-                                    <span key={u.id} className="badge badge-trace">{u.username} ({u.role})</span>
-                                ))}
+                            <div className="adm-repo-cell">
+                              <span className="adm-repo-name">{r.repo_name}</span>
+                              <span className="adm-repo-url">{r.repo_url}</span>
                             </div>
                           </td>
-                          <td>{r.analysis_count}</td>
+                          <td>
+                            <div className="adm-collab-chips">
+                              {r.users.map(u => (
+                                <span key={u.id} className="adm-badge adm-badge-slate">{u.username} <span className="adm-badge-role">({u.role})</span></span>
+                              ))}
+                            </div>
+                          </td>
+                          <td><span className="adm-cell-metric">{r.analysis_count}</span></td>
                           <td>
                             {r.total_issues > 0 ? (
-                                <span className="badge badge-high">{r.total_issues}</span>
-                            ) : '-'}
+                              <span className="adm-badge adm-badge-orange">{r.total_issues}</span>
+                            ) : <span className="adm-cell-secondary">—</span>}
                           </td>
-                          <td>{formatBytes(r.storage_bytes)}</td>
+                          <td><span className="adm-cell-metric">{formatBytes(r.storage_bytes)}</span></td>
                           <td>
                             <button 
-                              className="btn-danger-sm"
+                              className="adm-btn-danger-sm"
                               onClick={() => setConfirmModal({
                                 isOpen: true,
                                 data: { type: 'deleteRepo', projectId: r.id, repoName: r.repo_name }
                               })}
                             >
-                              <Trash2 size={14} /> Delete
+                              <Trash2 size={13} />
                             </button>
                           </td>
                         </tr>
@@ -406,72 +472,81 @@ export default function AdminPage() {
               </motion.div>
             )}
 
-            {/* RULES TAB */}
+            {/* ═══ RULES TAB ═══ */}
             {activeTab === 'rules' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="admin-rules">
-                    <div className="admin-actions-bar flex justify-between items-center">
-                        <div>
-                            <h3 className="section-title m-0">Static Analysis Rules ({rules.length})</h3>
-                        </div>
-                        <div className="flex gap-2">
-                            <input 
-                                type="file" 
-                                ref={fileInputRef} 
-                                style={{ display: 'none'}} 
-                                accept=".json,.csv"
-                                onChange={handleFileUpload}
-                            />
-                            <button 
-                                className="btn-secondary"
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={importLoading}
-                            >
-                                {importLoading ? <RefreshCw size={16} className="spin" /> : <Upload size={16} />}
-                                Bulk Import (JSON/CSV)
-                            </button>
-                        </div>
-                    </div>
+              <motion.div key="rules"
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }}
+                className="adm-rules">
+                <div className="adm-section-header" style={{ marginBottom: 16 }}>
+                  <h3 className="adm-section-title">
+                    <FileJson size={16} /> {rules.length} Analysis Rule{rules.length !== 1 ? 's' : ''}
+                  </h3>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      style={{ display: 'none'}} 
+                      accept=".json,.csv"
+                      onChange={handleFileUpload}
+                    />
+                    <button 
+                      className="adm-btn-import"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={importLoading}
+                    >
+                      {importLoading ? <RefreshCw size={14} className="spin" /> : <Upload size={14} />}
+                      <span>Import Rules</span>
+                    </button>
+                  </div>
+                </div>
 
-                    <div className="table-container mt-4">
-                  <table className="admin-table text-sm">
+                <div className="adm-table-wrap">
+                  <table className="adm-table adm-table-compact">
                     <thead>
                       <tr>
-                        <th>Status</th>
+                        <th style={{ width: 90 }}>Status</th>
                         <th>Rule ID / Name</th>
-                        <th>Lang/Family</th>
+                        <th>Language / Family</th>
                         <th>Severity</th>
-                        <th>Actions</th>
+                        <th style={{ width: 60 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {rules.map(r => (
-                        <tr key={r.id} className={!r.is_active ? 'opacity-50' : ''}>
+                        <tr key={r.id} className={!r.is_active ? 'adm-row-inactive' : ''}>
                           <td>
                             <button 
-                                onClick={() => handleToggleRule(r.rule_id)}
-                                className={`text-xs px-2 py-1 rounded border cursor-pointer hover:opacity-80 ${r.is_active ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' : 'bg-slate-500/10 text-slate-400 border-slate-500/30'}`}
+                              onClick={() => handleToggleRule(r.rule_id)}
+                              className={`adm-toggle ${r.is_active ? 'adm-toggle-active' : 'adm-toggle-inactive'}`}
                             >   
-                                {r.is_active ? 'ACTIVE' : 'INACTIVE'}
+                              <span className="adm-toggle-dot" />
+                              {r.is_active ? 'Active' : 'Off'}
                             </button>
                           </td>
                           <td>
-                            <div className="font-mono text-xs text-primary">{r.rule_id}</div>
-                            <div className="font-semibold">{r.name}</div>
+                            <div className="adm-rule-cell">
+                              <code className="adm-rule-id">{r.rule_id}</code>
+                              <span className="adm-rule-name">{r.name}</span>
+                            </div>
                           </td>
                           <td>
-                            <div className="capitalize">{r.language} • {r.defect_family.replace('_', ' ')}</div>
-                            <div className="font-mono text-xs text-muted mt-1 truncate max-w-xs">{r.pattern}</div>
+                            <div className="adm-rule-meta">
+                              <span className="adm-rule-lang">{r.language} <span style={{ opacity: 0.4 }}>•</span> {r.defect_family.replace('_', ' ')}</span>
+                              <code className="adm-rule-pattern">{r.pattern}</code>
+                            </div>
                           </td>
                           <td><span className={`badge badge-${r.severity}`}>{r.severity}</span></td>
                           <td>
                             <button 
-                              className="btn-danger-sm"
+                              className="adm-btn-danger-icon"
                               onClick={() => setConfirmModal({
                                 isOpen: true,
                                 data: { type: 'deleteRule', ruleId: r.rule_id }
                               })}
+                              title="Delete rule"
                             >
-                              <Trash2 size={12} />
+                              <Trash2 size={13} />
                             </button>
                           </td>
                         </tr>
@@ -479,47 +554,55 @@ export default function AdminPage() {
                     </tbody>
                   </table>
                 </div>
-                </motion.div>
+              </motion.div>
             )}
 
-            {/* AUDIT LOG TAB */}
+            {/* ═══ AUDIT LOG TAB ═══ */}
             {activeTab === 'audit' && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="admin-audit">
-                 <div className="table-container">
-                    <table className="admin-table text-sm">
+              <motion.div key="audit"
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }}
+                className="adm-audit">
+                <div className="adm-section-header" style={{ marginBottom: 16 }}>
+                  <h3 className="adm-section-title">
+                    <Terminal size={16} /> {auditLogs.length} Log Entr{auditLogs.length !== 1 ? 'ies' : 'y'}
+                  </h3>
+                </div>
+                <div className="adm-table-wrap">
+                  <table className="adm-table adm-table-compact">
                     <thead>
-                        <tr>
+                      <tr>
                         <th>Time</th>
                         <th>Admin</th>
                         <th>Action</th>
                         <th>Target</th>
                         <th>Details</th>
-                        </tr>
+                      </tr>
                     </thead>
                     <tbody>
-                        {auditLogs.map((log) => (
+                      {auditLogs.map((log) => (
                         <tr key={log.id}>
-                            <td className="whitespace-nowrap">{formatDate(log.created_at)}</td>
-                            <td><span className="badge badge-info">{log.admin_username}</span></td>
-                            <td><span className="badge badge-trace">{log.action}</span></td>
-                            <td className="mono">{log.target_type}: {log.target_id || 'all'}</td>
-                            <td>
-                                <div className="text-xs bg-black/20 p-2 rounded max-h-24 overflow-y-auto font-mono text-slate-400">
-                                    {log.details ? JSON.stringify(log.details) : '{}'}
-                                </div>
-                            </td>
+                          <td className="adm-cell-time">{formatDate(log.created_at)}</td>
+                          <td><span className="adm-badge adm-badge-purple">{log.admin_username}</span></td>
+                          <td><span className="adm-badge adm-badge-slate">{log.action}</span></td>
+                          <td><span className="adm-cell-mono">{log.target_type}: {log.target_id || 'all'}</span></td>
+                          <td>
+                            <div className="adm-cell-json">
+                              {log.details ? JSON.stringify(log.details) : '{}'}
+                            </div>
+                          </td>
                         </tr>
-                        ))}
+                      ))}
                     </tbody>
-                    </table>
+                  </table>
                 </div>
               </motion.div>
             )}
-          </>
+          </AnimatePresence>
         )}
       </div>
 
-      {/* Confirmation Modals */}
+      {/* ─── Confirmation Modals ──────────── */}
       <ConfirmModal 
         isOpen={confirmModal.isOpen && confirmModal.data?.type === 'deleteUser'}
         title="Delete User"
@@ -551,7 +634,7 @@ export default function AdminPage() {
         onConfirm={handleDeleteAllRepos}
       />
 
-        <ConfirmModal 
+      <ConfirmModal 
         isOpen={confirmModal.isOpen && confirmModal.data?.type === 'deleteRule'}
         title="Delete Analysis Rule"
         message={`Are you sure you want to permanently delete rule "${confirmModal.data?.ruleId}"? Note: you can simply toggle it inactive instead.`}
@@ -567,252 +650,634 @@ export default function AdminPage() {
 }
 
 const adminStyles = `
-  .admin-container {
+  /* ═══════════════════════════════════════════
+     Admin Page — Premium Design System
+     ═══════════════════════════════════════════ */
+
+  .adm-container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 32px 24px;
+    padding: 40px 28px 60px;
     min-height: calc(100vh - 64px);
   }
 
-  .admin-header {
+  /* ─── Header ─────────────────────────────── */
+  .adm-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 24px;
+    align-items: center;
+    margin-bottom: 32px;
+    gap: 16px;
+  }
+  .adm-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .adm-header-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--ca-gradient-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
+  }
+  .adm-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--ca-text);
+    margin: 0;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+  .adm-subtitle {
+    color: var(--ca-text-muted);
+    font-size: 0.88rem;
+    margin-top: 2px;
+  }
+  .adm-refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 18px;
+    background: var(--ca-bg-card);
+    border: 1px solid var(--ca-border);
+    border-radius: 10px;
+    color: var(--ca-text-secondary);
+    font-weight: 500;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .adm-refresh-btn:hover {
+    border-color: var(--ca-primary);
+    color: var(--ca-primary);
+    background: rgba(99, 102, 241, 0.06);
   }
 
-  .admin-title {
-    font-size: 1.75rem;
+  /* ─── Notices ────────────────────────────── */
+  .adm-notice {
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+    font-size: 0.88rem;
+    overflow: hidden;
+  }
+  .adm-notice-icon {
+    flex-shrink: 0;
+    display: flex;
+  }
+  .adm-notice-error {
+    background: rgba(239, 68, 68, 0.08);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.15);
+  }
+  .adm-notice-success {
+    background: rgba(16, 185, 129, 0.08);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.15);
+  }
+
+  /* ─── Tabs ───────────────────────────────── */
+  .adm-tabs {
+    margin-bottom: 24px;
+    overflow-x: auto;
+  }
+  .adm-tabs-inner {
+    display: flex;
+    gap: 4px;
+    background: var(--ca-bg-card);
+    border: 1px solid var(--ca-border);
+    border-radius: 14px;
+    padding: 4px;
+    width: fit-content;
+    min-width: 100%;
+  }
+  .adm-tab {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 18px;
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    color: var(--ca-text-muted);
+    font-weight: 500;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.2s;
+    white-space: nowrap;
+    flex: 1;
+    justify-content: center;
+    z-index: 1;
+  }
+  .adm-tab:hover:not(.active) {
+    color: var(--ca-text);
+  }
+  .adm-tab.active {
+    color: white;
+  }
+  .adm-tab-indicator {
+    position: absolute;
+    inset: 0;
+    background: var(--ca-gradient-primary);
+    border-radius: 10px;
+    z-index: -1;
+    box-shadow: 0 2px 10px rgba(99, 102, 241, 0.25);
+  }
+
+  /* ─── Content ────────────────────────────── */
+  .adm-content {
+    min-height: 400px;
+  }
+  .adm-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 340px;
+    color: var(--ca-text-muted);
+    gap: 16px;
+    font-size: 0.9rem;
+  }
+  .adm-loading-spinner {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: var(--ca-bg-card);
+    border: 1px solid var(--ca-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ca-primary);
+  }
+
+  /* ─── Stats Grid (Overview) ──────────────── */
+  .adm-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .adm-stat-card {
+    background: var(--ca-bg-card);
+    border: 1px solid var(--ca-border);
+    border-radius: 16px;
+    padding: 22px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.25s ease;
+  }
+  .adm-stat-card:hover {
+    border-color: var(--ca-glass-border);
+    box-shadow: 0 8px 32px var(--card-glow, rgba(0,0,0,0.1)), var(--ca-shadow-sm);
+    transform: translateY(-2px);
+  }
+  .adm-stat-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+  }
+  .adm-stat-card-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .adm-stat-card-value {
+    font-size: 1.55rem;
+    font-weight: 700;
+    color: var(--ca-text);
+    line-height: 1.15;
+    letter-spacing: -0.3px;
+  }
+  .adm-stat-card-label {
+    font-size: 0.82rem;
+    color: var(--ca-text-muted);
+    margin-top: 2px;
+  }
+
+  /* ─── Sections ───────────────────────────── */
+  .adm-section {
+    margin-top: 8px;
+  }
+  .adm-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .adm-section-title {
+    font-size: 0.95rem;
     font-weight: 600;
     color: var(--ca-text);
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    letter-spacing: -0.2px;
   }
-
-  .admin-title svg {
-    color: var(--ca-primary);
+  .adm-section-title svg {
+    color: var(--ca-primary-light);
   }
-
-  .admin-subtitle {
-    color: var(--ca-text-muted);
-    font-size: 0.95rem;
-    margin-top: 4px;
-  }
-
-  .admin-notice {
-    padding: 12px 16px;
-    border-radius: var(--ca-radius-sm);
-    margin-bottom: 24px;
+  .adm-section-link {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: var(--ca-primary-light);
+    font-size: 0.82rem;
     font-weight: 500;
-  }
-
-  .admin-error {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.2);
-  }
-
-  .admin-success {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10b981;
-    border: 1px solid rgba(16, 185, 129, 0.2);
-  }
-
-  .admin-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 24px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-  }
-
-  .admin-tab {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: var(--ca-bg-card);
-    border: 1px solid var(--ca-border);
-    border-radius: var(--ca-radius-sm);
-    color: var(--ca-text-muted);
-    font-weight: 500;
-    font-size: 0.9rem;
     cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
+    font-family: inherit;
+    transition: opacity 0.15s;
+    padding: 4px 0;
   }
-
-  .admin-tab:hover {
-    background: var(--ca-bg-elevated);
-    color: var(--ca-text);
+  .adm-section-link:hover {
+    opacity: 0.8;
   }
-
-  .admin-tab.active {
-    background: var(--ca-primary);
-    border-color: var(--ca-primary);
-    color: white;
-  }
-
-  .admin-content {
-    min-height: 400px;
-  }
-
-  .admin-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 300px;
+  .adm-empty-text {
     color: var(--ca-text-muted);
-    gap: 16px;
+    font-size: 0.9rem;
+    padding: 24px 0;
   }
 
-  /* Stats Grid */
-  .admin-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-  }
-
-  .admin-stat-card {
-    background: var(--ca-bg-elevated);
-    border: 1px solid var(--ca-glass-border);
-    border-radius: var(--ca-radius);
-    padding: 20px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .stat-icon.users { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
-  .stat-icon.repos { background: rgba(16, 185, 129, 0.15); color: #34d399; }
-  .stat-icon.storage { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
-  .stat-icon.analyses { background: rgba(6, 182, 212, 0.15); color: #22d3ee; }
-
-  .stat-info {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .stat-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--ca-text);
-    line-height: 1.2;
-  }
-
-  .stat-label {
-    font-size: 0.85rem;
-    color: var(--ca-text-muted);
-  }
-
-  /* Tables */
-  .table-container {
+  /* ─── Tables ─────────────────────────────── */
+  .adm-table-wrap {
     overflow-x: auto;
     border: 1px solid var(--ca-border);
-    border-radius: var(--ca-radius-sm);
-    background: var(--ca-bg-elevated);
+    border-radius: 14px;
+    background: var(--ca-bg-card);
+    margin-top: 12px;
   }
-
-  .admin-table {
+  .adm-table {
     width: 100%;
     border-collapse: collapse;
     text-align: left;
   }
-
-  .admin-table th, .admin-table td {
-    padding: 12px 16px;
+  .adm-table th,
+  .adm-table td {
+    padding: 14px 18px;
     border-bottom: 1px solid var(--ca-border);
   }
-
-  .admin-table th {
-    background: var(--ca-bg-secondary);
-    color: var(--ca-text-secondary);
-    font-weight: 600;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  .adm-table-compact th,
+  .adm-table-compact td {
+    padding: 12px 16px;
   }
-
-  .admin-table tr:last-child td {
+  .adm-table th {
+    background: var(--ca-bg-secondary);
+    color: var(--ca-text-muted);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .adm-table th:first-child {
+    border-radius: 14px 0 0 0;
+  }
+  .adm-table th:last-child {
+    border-radius: 0 14px 0 0;
+  }
+  .adm-table tr:last-child td {
     border-bottom: none;
   }
-
-  .admin-table tr:hover td {
-    background: rgba(255, 255, 255, 0.02);
+  .adm-table tbody tr {
+    transition: background 0.15s;
+  }
+  .adm-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.02);
   }
 
-  .is-admin-row td {
+  /* Row variants */
+  .adm-row-admin td {
     background: rgba(99, 102, 241, 0.03);
   }
+  .adm-row-inactive {
+    opacity: 0.5;
+  }
+  .adm-row-inactive:hover {
+    opacity: 0.7;
+  }
 
-  /* Buttons inside Admin */
-  .btn-danger {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    padding: 10px 20px;
-    border-radius: var(--ca-radius-sm);
+  /* ─── Table Cells ────────────────────────── */
+  .adm-cell-time {
+    white-space: nowrap;
+    font-size: 0.82rem;
+    color: var(--ca-text-secondary);
+  }
+  .adm-cell-mono {
+    font-family: var(--ca-font-mono);
+    font-size: 0.78rem;
+    color: var(--ca-text-muted);
+  }
+  .adm-cell-secondary {
+    color: var(--ca-text-muted);
+    font-size: 0.88rem;
+  }
+  .adm-cell-metric {
     font-weight: 600;
-    cursor: pointer;
+    font-size: 0.88rem;
+    color: var(--ca-text);
+  }
+  .adm-cell-json {
+    font-family: var(--ca-font-mono);
+    font-size: 0.72rem;
+    background: var(--ca-bg-secondary);
+    padding: 8px 10px;
+    border-radius: 8px;
+    max-height: 64px;
+    overflow-y: auto;
+    color: var(--ca-text-muted);
+    line-height: 1.5;
+    word-break: break-all;
+  }
+
+  /* ─── User Cell ──────────────────────────── */
+  .adm-user-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .adm-user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: var(--ca-gradient-primary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .adm-user-name {
+    font-weight: 600;
+    color: var(--ca-text);
+    font-size: 0.9rem;
+  }
+
+  /* ─── Repo Cell ──────────────────────────── */
+  .adm-repo-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .adm-repo-name {
+    font-weight: 600;
+    color: var(--ca-text);
+    font-size: 0.9rem;
+  }
+  .adm-repo-url {
+    font-size: 0.75rem;
+    color: var(--ca-text-muted);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .adm-collab-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* ─── Rule Cell ──────────────────────────── */
+  .adm-rule-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .adm-rule-id {
+    font-family: var(--ca-font-mono);
+    font-size: 0.72rem;
+    color: var(--ca-primary-light);
+    background: rgba(99, 102, 241, 0.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+    width: fit-content;
+  }
+  .adm-rule-name {
+    font-weight: 500;
+    color: var(--ca-text);
+    font-size: 0.88rem;
+  }
+  .adm-rule-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .adm-rule-lang {
+    font-size: 0.82rem;
+    color: var(--ca-text-secondary);
+    text-transform: capitalize;
+  }
+  .adm-rule-pattern {
+    font-family: var(--ca-font-mono);
+    font-size: 0.7rem;
+    color: var(--ca-text-muted);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+  }
+
+  /* ─── Toggle Button ──────────────────────── */
+  .adm-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .adm-toggle-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .adm-toggle-active {
+    background: rgba(16, 185, 129, 0.1);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.25);
+  }
+  .adm-toggle-active .adm-toggle-dot {
+    background: #34d399;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+  }
+  .adm-toggle-active:hover {
+    background: rgba(16, 185, 129, 0.15);
+  }
+  .adm-toggle-inactive {
+    background: var(--ca-bg-secondary);
+    color: var(--ca-text-muted);
+    border-color: var(--ca-border);
+  }
+  .adm-toggle-inactive .adm-toggle-dot {
+    background: var(--ca-text-muted);
+  }
+  .adm-toggle-inactive:hover {
+    border-color: var(--ca-text-muted);
+  }
+
+  /* ─── Badges ─────────────────────────────── */
+  .adm-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .adm-badge-purple {
+    background: rgba(139, 92, 246, 0.1);
+    color: #a78bfa;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+  }
+  .adm-badge-slate {
+    background: rgba(100, 116, 139, 0.1);
+    color: var(--ca-text-secondary);
+    border: 1px solid rgba(100, 116, 139, 0.2);
+  }
+  .adm-badge-orange {
+    background: rgba(249, 115, 22, 0.12);
+    color: #fb923c;
+    border: 1px solid rgba(249, 115, 22, 0.25);
+  }
+  .adm-badge-role {
+    opacity: 0.6;
+    font-weight: 400;
+  }
+
+  /* ─── Action Buttons ─────────────────────── */
+  .adm-btn-danger-sm {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.12);
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
     transition: all 0.2s;
   }
-
-  .btn-danger:hover {
-    background: #ef4444;
-    color: white;
-  }
-
-  .btn-danger-sm {
-    background: rgba(239, 68, 68, 0.1);
+  .adm-btn-danger-sm:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
     color: #ef4444;
-    border: 1px solid transparent;
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    transition: all 0.15s;
   }
-  
-  .btn-danger-sm:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: rgba(239, 68, 68, 0.4);
-  }
-  
-  .btn-danger-sm:disabled {
-    opacity: 0.3;
+  .adm-btn-danger-sm:disabled {
+    opacity: 0.25;
     cursor: not-allowed;
   }
 
-  /* Modals Overlay for ConfirmModal */
+  .adm-btn-danger-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    color: var(--ca-text-muted);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .adm-btn-danger-icon:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.2);
+  }
+
+  .adm-btn-nuke {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .adm-btn-nuke:hover {
+    background: #ef4444;
+    color: white;
+    border-color: #ef4444;
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+  }
+
+  .adm-btn-import {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    background: var(--ca-bg-elevated);
+    color: var(--ca-text-secondary);
+    border: 1px solid var(--ca-border);
+    border-radius: 10px;
+    font-weight: 500;
+    font-size: 0.82rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .adm-btn-import:hover:not(:disabled) {
+    border-color: var(--ca-primary);
+    color: var(--ca-primary);
+    background: rgba(99, 102, 241, 0.06);
+  }
+  .adm-btn-import:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ─── Modal Styles (kept for ConfirmModal) ────── */
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
     z-index: 100;
   }
-
   .modal-wrapper {
     position: fixed;
     inset: 0;
@@ -822,75 +1287,88 @@ const adminStyles = `
     z-index: 101;
     padding: 20px;
   }
-
   .modal-content {
     background: var(--ca-bg-elevated);
-    max-width: 500px;
+    max-width: 480px;
     width: 100%;
-    padding: 24px;
-    border-radius: var(--ca-radius);
+    padding: 28px;
+    border-radius: 18px;
     border: 1px solid var(--ca-border);
+    box-shadow: var(--ca-shadow-lg);
   }
-
   .modal-header {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
     margin-bottom: 16px;
   }
-
   .modal-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
   }
-  
   .modal-icon.destructive {
-      background: rgba(239, 68, 68, 0.15);
-      color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
   }
-
   .modal-title {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
     margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.2px;
   }
-
   .modal-body {
     color: var(--ca-text-secondary);
     margin-bottom: 24px;
     line-height: 1.6;
+    font-size: 0.92rem;
   }
-
   .modal-type-confirm {
     margin-top: 16px;
     padding: 16px;
     background: var(--ca-bg-secondary);
-    border-radius: var(--ca-radius-sm);
+    border-radius: 12px;
     border: 1px dashed var(--ca-border);
   }
-
   .modal-type-confirm label {
     display: block;
     margin-bottom: 8px;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     color: var(--ca-text);
   }
-
   .modal-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
+    gap: 10px;
   }
-
   .btn-destructive {
     background: #ef4444;
     color: white;
   }
   .btn-destructive:hover:not(:disabled) {
     background: #dc2626;
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+  }
+
+  /* ─── Animations ─────────────────────────── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.8s linear infinite; }
+
+  /* ─── Responsive ─────────────────────────── */
+  @media (max-width: 768px) {
+    .adm-container { padding: 24px 16px 60px; }
+    .adm-header { flex-direction: column; align-items: flex-start; }
+    .adm-stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .adm-tabs-inner { min-width: fit-content; }
+    .adm-tab { padding: 8px 14px; font-size: 0.8rem; }
+  }
+  @media (max-width: 480px) {
+    .adm-stats-grid { grid-template-columns: 1fr; }
+    .adm-header-icon { width: 40px; height: 40px; border-radius: 12px; }
+    .adm-title { font-size: 1.3rem; }
   }
 `;

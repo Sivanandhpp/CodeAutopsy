@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, BarChart3, GitBranch, Users, Clock, RefreshCw,
-  ArrowRight, FolderOpen, Filter, Loader2, AlertCircle,
+  ArrowRight, FolderOpen, Filter, Loader2, AlertCircle, Sparkles,
 } from 'lucide-react';
 import useAuthStore from '../lib/authStore';
 import { getProjects, analyzeRepository } from '../lib/api';
@@ -84,20 +84,34 @@ export default function DashboardPage() {
     healthy: projects.filter(p => (p.latest_analysis?.health_score ?? 0) >= 80).length,
   };
 
+  const greeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
   return (
     <div className="db-container">
       {/* Header */}
       <div className="db-header">
-        <div>
+        <div className="db-header-text">
           <motion.h1 className="db-greeting"
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            Welcome, {user?.username} 👋
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}>
+            {greeting()}, <span className="db-greeting-name">{user?.username}</span>
           </motion.h1>
-          <p className="db-subtitle">Your code analysis dashboard</p>
+          <motion.p className="db-subtitle"
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.4 }}>
+            Your code analysis dashboard — {projects.length} project{projects.length !== 1 ? 's' : ''} tracked
+          </motion.p>
         </div>
         <motion.button className="db-new-btn" onClick={() => setShowNewAnalysis(!showNewAnalysis)}
-          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-          <Plus size={18} /> New Analysis
+          initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.15, duration: 0.3 }}
+          whileHover={{ scale: 1.03, y: -1 }} whileTap={{ scale: 0.97 }}>
+          <Plus size={17} strokeWidth={2.5} /> New Analysis
         </motion.button>
       </div>
 
@@ -105,14 +119,20 @@ export default function DashboardPage() {
       <AnimatePresence>
         {showNewAnalysis && (
           <motion.form className="db-new-form"
-            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }} onSubmit={handleNewAnalysis}>
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginBottom: 24 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+            onSubmit={handleNewAnalysis}>
             <div className="db-new-inner">
+              <div className="db-new-icon">
+                <GitBranch size={18} />
+              </div>
               <input type="text" className="db-new-input"
                 placeholder="Paste a GitHub repository URL..." value={newRepoUrl}
                 onChange={(e) => setNewRepoUrl(e.target.value)} autoFocus />
               <button type="submit" className="db-analyze-btn" disabled={analyzing || !newRepoUrl.trim()}>
-                {analyzing ? <Loader2 size={16} className="spin" /> : <><span>Analyze</span><ArrowRight size={16} /></>}
+                {analyzing ? <Loader2 size={16} className="spin" /> : <><Sparkles size={15} /><span>Analyze</span><ArrowRight size={15} /></>}
               </button>
             </div>
           </motion.form>
@@ -122,27 +142,36 @@ export default function DashboardPage() {
       {/* Stats Bar */}
       <div className="db-stats">
         {[
-          { icon: FolderOpen, label: 'Total', value: stats.total, color: '#6366f1' },
-          { icon: GitBranch, label: 'Owned', value: stats.owned, color: '#10b981' },
-          { icon: Users, label: 'Shared', value: stats.shared, color: '#06b6d4' },
-          { icon: BarChart3, label: 'Healthy', value: stats.healthy, color: '#22c55e' },
+          { icon: FolderOpen, label: 'Total Projects', value: stats.total, gradient: 'linear-gradient(135deg, #6366f1, #818cf8)' },
+          { icon: GitBranch, label: 'Owned', value: stats.owned, gradient: 'linear-gradient(135deg, #10b981, #34d399)' },
+          { icon: Users, label: 'Shared With Me', value: stats.shared, gradient: 'linear-gradient(135deg, #06b6d4, #22d3ee)' },
+          { icon: BarChart3, label: 'Healthy (80+)', value: stats.healthy, gradient: 'linear-gradient(135deg, #22c55e, #4ade80)' },
         ].map((s, i) => (
           <motion.div className="db-stat" key={s.label}
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}>
-            <s.icon size={16} style={{ color: s.color }} />
-            <span className="db-stat-value">{s.value}</span>
-            <span className="db-stat-label">{s.label}</span>
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 + i * 0.06, duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}>
+            <div className="db-stat-icon" style={{ background: s.gradient }}>
+              <s.icon size={16} />
+            </div>
+            <div className="db-stat-text">
+              <span className="db-stat-value">{s.value}</span>
+              <span className="db-stat-label">{s.label}</span>
+            </div>
           </motion.div>
         ))}
       </div>
 
       {/* Search & Filter */}
-      <div className="db-toolbar">
+      <motion.div className="db-toolbar"
+        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35, duration: 0.4 }}>
         <div className="db-search">
-          <Search size={16} />
+          <Search size={15} strokeWidth={2} />
           <input type="text" placeholder="Search projects..." value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)} />
+          {searchQuery && (
+            <button className="db-search-clear" onClick={() => setSearchQuery('')}>✕</button>
+          )}
         </div>
         <div className="db-filters">
           {['all', 'owner', 'editor', 'viewer'].map((role) => (
@@ -152,19 +181,31 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
-        <button className="db-refresh" onClick={fetchProjects} title="Refresh">
-          <RefreshCw size={16} />
+        <button className="db-refresh" onClick={fetchProjects} title="Refresh"
+          disabled={loading}>
+          <RefreshCw size={15} className={loading ? 'spin' : ''} />
         </button>
-      </div>
+      </motion.div>
 
       {/* Error */}
-      {error && (
-        <div className="db-error"><AlertCircle size={16} /> {error}</div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.div className="db-error"
+            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}>
+            <AlertCircle size={15} /> {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Projects Grid */}
       {loading ? (
-        <div className="db-loading"><Loader2 size={24} className="spin" /><span>Loading projects...</span></div>
+        <div className="db-loading">
+          <div className="db-loading-spinner">
+            <Loader2 size={28} className="spin" />
+          </div>
+          <span>Loading your projects...</span>
+        </div>
       ) : filteredProjects.length > 0 ? (
         <div className="db-grid">
           {filteredProjects.map((project, index) => (
@@ -175,12 +216,14 @@ export default function DashboardPage() {
         </div>
       ) : (
         <motion.div className="db-empty"
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}>
+          <div className="db-empty-glow" />
           <div className="db-empty-icon">🔬</div>
           <h3>No projects yet</h3>
           <p>Analyze your first GitHub repository to get started</p>
           <button className="db-new-btn" onClick={() => setShowNewAnalysis(true)}>
-            <Plus size={18} /> Start Your First Analysis
+            <Plus size={17} strokeWidth={2.5} /> Start Your First Analysis
           </button>
         </motion.div>
       )}
@@ -200,211 +243,369 @@ const dashboardStyles = `
   .db-container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 32px 24px;
+    padding: 40px 28px 60px;
     min-height: calc(100vh - 64px);
   }
 
+  /* ─── Header ─────────────────────────────── */
   .db-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 24px;
+    margin-bottom: 32px;
+    gap: 16px;
   }
-
+  .db-header-text {
+    flex: 1;
+    min-width: 0;
+  }
   .db-greeting {
-    font-size: 1.75rem;
-    font-weight: 600;
+    font-size: 1.85rem;
+    font-weight: 700;
     color: var(--ca-text);
     margin: 0;
-    letter-spacing: -0.5px;
+    letter-spacing: -0.6px;
+    line-height: 1.2;
   }
-
+  .db-greeting-name {
+    background: var(--ca-gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
   .db-subtitle {
     color: var(--ca-text-muted);
-    font-size: 0.95rem;
-    margin-top: 4px;
+    font-size: 0.92rem;
+    margin-top: 6px;
+    letter-spacing: 0.01em;
   }
 
+  /* ─── New Analysis Button ────────────────── */
   .db-new-btn {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 20px;
-    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    padding: 11px 22px;
+    background: var(--ca-gradient-primary);
     border: none;
     border-radius: 12px;
     color: white;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
+    white-space: nowrap;
+    flex-shrink: 0;
   }
-  .db-new-btn:hover { box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4); transform: translateY(-1px); }
+  .db-new-btn:hover {
+    box-shadow: 0 8px 28px rgba(99, 102, 241, 0.4);
+  }
 
+  /* ─── New Analysis Form ──────────────────── */
   .db-new-form {
     overflow: hidden;
-    margin-bottom: 20px;
   }
   .db-new-inner {
     display: flex;
-    gap: 10px;
-    padding: 16px;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
     background: var(--ca-bg-card);
     border: 1px solid var(--ca-border);
     border-radius: 16px;
+    box-shadow: var(--ca-shadow-sm);
+    transition: border-color 0.2s;
+  }
+  .db-new-inner:focus-within {
+    border-color: var(--ca-primary);
+    box-shadow: var(--ca-shadow-sm), 0 0 0 3px rgba(99, 102, 241, 0.08);
+  }
+  .db-new-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--ca-primary-light);
+    flex-shrink: 0;
   }
   .db-new-input {
     flex: 1;
-    padding: 12px 16px;
-    background: var(--ca-bg-secondary);
-    border: 1px solid var(--ca-border);
-    border-radius: 10px;
+    padding: 10px 0;
+    background: transparent;
+    border: none;
     color: var(--ca-text);
     font-size: 0.95rem;
     font-family: inherit;
     outline: none;
   }
-  .db-new-input:focus { border-color: var(--ca-primary); }
+  .db-new-input::placeholder {
+    color: var(--ca-text-muted);
+  }
   .db-analyze-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     padding: 10px 20px;
-    background: var(--ca-primary);
+    background: var(--ca-gradient-primary);
     border: none;
     border-radius: 10px;
     color: white;
     font-weight: 600;
+    font-size: 0.85rem;
     cursor: pointer;
     font-family: inherit;
     white-space: nowrap;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
   }
-  .db-analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .db-analyze-btn:hover:not(:disabled) {
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+  }
+  .db-analyze-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+  /* ─── Stats Bar ──────────────────────────── */
   .db-stats {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
   }
   .db-stat {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
+    gap: 12px;
+    padding: 16px 18px;
     background: var(--ca-bg-card);
     border: 1px solid var(--ca-border);
-    border-radius: 12px;
-    flex: 1;
-    min-width: 120px;
+    border-radius: 14px;
+    transition: all 0.2s ease;
   }
-  .db-stat-value { font-weight: 700; font-size: 1.1rem; color: var(--ca-text); }
-  .db-stat-label { font-size: 0.8rem; color: var(--ca-text-muted); }
+  .db-stat:hover {
+    border-color: var(--ca-glass-border);
+    box-shadow: var(--ca-shadow-sm);
+    transform: translateY(-1px);
+  }
+  .db-stat-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+  }
+  .db-stat-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .db-stat-value {
+    font-weight: 700;
+    font-size: 1.25rem;
+    color: var(--ca-text);
+    line-height: 1.1;
+    letter-spacing: -0.3px;
+  }
+  .db-stat-label {
+    font-size: 0.76rem;
+    color: var(--ca-text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
+  /* ─── Search & Filter Toolbar ────────────── */
   .db-toolbar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 24px;
   }
   .db-search {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
+    gap: 10px;
+    padding: 9px 16px;
     background: var(--ca-bg-card);
     border: 1px solid var(--ca-border);
-    border-radius: 10px;
+    border-radius: 11px;
     flex: 1;
     min-width: 200px;
     color: var(--ca-text-muted);
+    transition: all 0.2s;
+  }
+  .db-search:focus-within {
+    border-color: var(--ca-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
   }
   .db-search input {
     background: transparent;
     border: none;
     outline: none;
     color: var(--ca-text);
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-family: inherit;
     width: 100%;
   }
-  .db-filters { display: flex; gap: 4px; }
+  .db-search-clear {
+    background: none;
+    border: none;
+    color: var(--ca-text-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s;
+    line-height: 1;
+  }
+  .db-search-clear:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+  }
+
+  .db-filters { display: flex; gap: 3px; background: var(--ca-bg-card); border: 1px solid var(--ca-border); border-radius: 11px; padding: 3px; }
   .db-filter {
     padding: 6px 14px;
-    border: 1px solid var(--ca-border);
+    border: none;
     border-radius: 8px;
     background: transparent;
     color: var(--ca-text-muted);
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.15s;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .db-filter:hover:not(.active) {
+    color: var(--ca-text);
+    background: var(--ca-bg-secondary);
   }
   .db-filter.active {
     background: var(--ca-primary);
-    border-color: var(--ca-primary);
     color: white;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
   }
   .db-refresh {
-    padding: 8px;
+    padding: 9px;
     border: 1px solid var(--ca-border);
-    border-radius: 8px;
-    background: transparent;
+    border-radius: 11px;
+    background: var(--ca-bg-card);
     color: var(--ca-text-muted);
     cursor: pointer;
     display: flex;
-    transition: all 0.15s;
+    transition: all 0.2s;
   }
-  .db-refresh:hover { border-color: var(--ca-primary); color: var(--ca-primary); }
+  .db-refresh:hover:not(:disabled) { border-color: var(--ca-primary); color: var(--ca-primary); }
+  .db-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 
+  /* ─── Error ──────────────────────────────── */
   .db-error {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    gap: 10px;
+    padding: 13px 18px;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.15);
     border-radius: 12px;
     color: #f87171;
-    font-size: 0.9rem;
-    margin-bottom: 16px;
+    font-size: 0.88rem;
+    margin-bottom: 20px;
+    font-weight: 500;
   }
 
+  /* ─── Projects Grid ──────────────────────── */
   .db-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 16px;
+    gap: 18px;
   }
 
+  /* ─── Loading State ──────────────────────── */
   .db-loading {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 60px 20px;
+    gap: 16px;
+    padding: 80px 20px;
     color: var(--ca-text-muted);
+    font-size: 0.9rem;
+  }
+  .db-loading-spinner {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: var(--ca-bg-card);
+    border: 1px solid var(--ca-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ca-primary);
   }
 
+  /* ─── Empty State ────────────────────────── */
   .db-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 60px 20px;
+    gap: 14px;
+    padding: 80px 20px;
     text-align: center;
+    position: relative;
   }
-  .db-empty-icon { font-size: 3rem; }
-  .db-empty h3 { color: var(--ca-text); font-size: 1.2rem; margin: 0; }
-  .db-empty p { color: var(--ca-text-muted); font-size: 0.95rem; margin: 0 0 12px; }
+  .db-empty-glow {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .db-empty-icon {
+    font-size: 3.5rem;
+    line-height: 1;
+    position: relative;
+  }
+  .db-empty h3 {
+    color: var(--ca-text);
+    font-size: 1.2rem;
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+  .db-empty p {
+    color: var(--ca-text-muted);
+    font-size: 0.92rem;
+    margin: 0 0 8px;
+    max-width: 340px;
+  }
 
+  /* ─── Spin Animation ─────────────────────── */
   @keyframes spin { to { transform: rotate(360deg); } }
   .spin { animation: spin 0.8s linear infinite; }
 
-  @media (max-width: 640px) {
-    .db-header { flex-direction: column; gap: 12px; }
+  /* ─── Responsive ─────────────────────────── */
+  @media (max-width: 768px) {
+    .db-container { padding: 24px 16px 60px; }
+    .db-header { flex-direction: column; gap: 16px; }
+    .db-greeting { font-size: 1.5rem; }
+    .db-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .db-toolbar { flex-wrap: wrap; }
+    .db-search { min-width: 100%; order: -1; }
     .db-grid { grid-template-columns: 1fr; }
-    .db-stats { flex-direction: column; }
+  }
+  @media (max-width: 480px) {
+    .db-stats { grid-template-columns: 1fr; }
+    .db-filters { overflow-x: auto; }
+    .db-stat-label { font-size: 0.72rem; }
   }
 `;
