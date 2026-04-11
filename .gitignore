@@ -42,7 +42,5 @@ Thumbs.db
 
 # Project specific
 backend/juice-shop/
-backend/data/
-backend/temp_repos/
-backend/data/repos
+backend/repos/
 frontend/landing page/

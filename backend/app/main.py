@@ -5,7 +5,6 @@ AI-Powered Code Archaeology & Security Analysis Platform
 v2.0: Docker + PostgreSQL + JWT Auth + Ollama
 """
 
-import os
 import logging
 from contextlib import asynccontextmanager
 
@@ -41,9 +40,9 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle."""
     settings = get_settings()
 
-    # Create data directories
-    os.makedirs("data", exist_ok=True)
-    os.makedirs("data/repos", exist_ok=True)
+    # Resolve and create the repos directory (single source of truth)
+    from app.services.repo_storage_service import RepoStorageService
+    repos_path = RepoStorageService.get_base_path()
 
     logger.info("🔬 CodeAutopsy API v2.0 is running!")
     logger.info(f"📊 Database: PostgreSQL (async)")

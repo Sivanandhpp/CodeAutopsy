@@ -12,7 +12,7 @@ node_modules, dist, vendor, lockfiles, and generated code. This module:
    files, giving the user early feedback.
 
 Usage:
-    ff = FileFilter(repo_path="/app/data/repos/example_abc123")
+    ff = FileFilter(repo_path="/repos_data/abc123/owner/repo")
     stack = ff.detect_stack()          # -> ProjectStack
     files = ff.user_authored_files()   # -> list[Path], sorted by size
 """

@@ -39,6 +39,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://codeautopsy:${DB_PASSWORD:-codeautopsy_dev_2024}@db:5432/codeautopsy
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      REPOS_DIR: /repos_data
       CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:80"
     ports:
       - "8000:8000"
@@ -55,13 +56,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
-    # Override CMD for dev mode with hot-reload (single worker)
-    command: >
-      sh -c "
-        mkdir -p /repos_data;
-        chown -R appuser:appuser /repos_data;
-        exec su -s /bin/sh appuser -c 'uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app'
-      "
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app
     networks:
       - codeautopsy-net
 
