@@ -1,8 +1,9 @@
 /**
- * Code Editor — Monaco editor wrapper with issue decorations and hover tooltips
+ * Code Editor — Monaco editor wrapper with issue decorations, hover tooltips,
+ * right-click "Trace Origin" context menu, and imperative jumpToLine via ref.
  */
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import Editor from '@monaco-editor/react';
 
 // Map our language names (from languages.py) to Monaco language IDs
@@ -59,19 +60,37 @@ const MONACO_LANG_MAP = {
 };
 
 
-export default function CodeEditor({ 
-  code = '', 
+const CodeEditor = forwardRef(function CodeEditor({
+  code = '',
   language = 'plaintext',
   issues = [],
-  onLineClick,
   onChange,
+  onTraceOrigin,
   isDark = true,
-}) {
+}, ref) {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const decorationsRef = useRef([]);
+  const traceOriginRef = useRef(onTraceOrigin);
+
+  // Keep callback ref in sync without re-registering the action
+  useEffect(() => {
+    traceOriginRef.current = onTraceOrigin;
+  }, [onTraceOrigin]);
 
   const monacoLang = MONACO_LANG_MAP[language?.toLowerCase()] || 'plaintext';
+
+  // Expose jumpToLine to parent via ref
+  useImperativeHandle(ref, () => ({
+    jumpToLine(lineNumber) {
+      const editor = editorRef.current;
+      if (editor) {
+        editor.revealLineInCenter(lineNumber);
+        editor.setPosition({ lineNumber, column: 1 });
+        editor.focus();
+      }
+    },
+  }), []);
 
   const handleEditorMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
@@ -80,13 +99,29 @@ export default function CodeEditor({
     // Apply decorations for issues
     applyDecorations(editor, monaco, issues);
 
-    // Line click handler
-    editor.onMouseDown((e) => {
-      if (e.target?.position?.lineNumber && onLineClick) {
-        onLineClick(e.target.position.lineNumber);
-      }
+    // ── Register "Trace Origin" context-menu action ──────────
+    editor.addAction({
+      id: 'codeautopsy.traceOrigin',
+      label: 'Trace Origin',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.5,
+      // Show always — the action handler will check selection
+      run(ed) {
+        const selection = ed.getSelection();
+        const selectedText = ed.getModel().getValueInRange(selection);
+        const lineNumber = selection.startLineNumber;
+
+        if (traceOriginRef.current) {
+          traceOriginRef.current({
+            lineNumber,
+            selectedText: selectedText || null,
+            startLine: selection.startLineNumber,
+            endLine: selection.endLineNumber,
+          });
+        }
+      },
     });
-  }, [issues, onLineClick]);
+  }, [issues]);
 
   // Update decorations when issues change
   useEffect(() => {
@@ -132,14 +167,14 @@ export default function CodeEditor({
               '',
               issue.code_snippet ? `\`\`\`\n${issue.code_snippet}\n\`\`\`` : '',
               '',
-              '_Click "Trace Origin" in the Problems panel below_',
+              '_Right-click → **Trace Origin** to investigate_',
             ].join('\n'),
           },
           overviewRuler: {
             color: {
               blocker: '#7f1d1d',
               critical: '#ef4444',
-              high: '#f97316', 
+              high: '#f97316',
               medium: '#eab308',
               low: '#06b6d4',
               info: '#8b5cf6',
@@ -156,22 +191,6 @@ export default function CodeEditor({
       decorations
     );
   }
-
-  // Public method to jump to a line
-  const jumpToLine = useCallback((lineNumber) => {
-    if (editorRef.current) {
-      editorRef.current.revealLineInCenter(lineNumber);
-      editorRef.current.setPosition({ lineNumber, column: 1 });
-      editorRef.current.focus();
-    }
-  }, []);
-
-  // Expose jumpToLine via ref-like pattern
-  useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current._jumpToLine = jumpToLine;
-    }
-  }, [jumpToLine]);
 
   return (
     <div className="ce-wrap">
@@ -244,7 +263,6 @@ export default function CodeEditor({
       `}</style>
     </div>
   );
-}
+});
 
-// Export a helper to jump to line from outside
-CodeEditor.jumpToLine = null;
+export default CodeEditor;
