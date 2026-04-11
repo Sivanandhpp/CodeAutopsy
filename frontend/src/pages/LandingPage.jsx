@@ -96,8 +96,8 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.15 }}
           >
-            A Time Machine <br />
-            for Debugging
+            Bugs don't appear.<br />They're introduced.
+            
           </motion.h1>
 
           <motion.p
@@ -106,8 +106,7 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.35 }}
           >
-            Don't just find bugs — discover when they were introduced,
-            who wrote them, and how they evolved.
+            Find when a bug was introduced, who wrote it, and how it spread before it ships.
           </motion.p>
 
           {/* Glass Input */}
@@ -267,11 +266,11 @@ const landingStyles = `
 
   .lp-hero-text {
     font-size: clamp(3rem, 7vw, 6rem);
-    font-weight: 500;
+    font-weight: 800;
     line-height: 1.1;
     color: white;
     margin-bottom: 2rem;
-    letter-spacing: -2px;
+    letter-spacing: -4px;
     text-shadow: 0 0 40px rgba(255, 255, 255, 0.3);
   }
 
