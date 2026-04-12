@@ -1,0 +1,61 @@
+name: Deploy to Azure Bare-Metal
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Build the frontend using GitHub's powerful runners (7GB RAM)
+      - name: Build Frontend
+        working-directory: ./frontend
+        env:
+          VITE_API_URL: "http://${{ secrets.VM_IP }}"
+        run: |
+          npm install
+          npm run build
+
+      # Copy the backend code and the newly built frontend to the Azure VM
+      - name: Copy Files to Azure VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          source: "backend/*,frontend/dist/*"
+          target: "/opt/codeautopsy/"
+
+      # SSH into the VM to update dependencies, run migrations, and restart
+      - name: Restart Services on VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            echo "🔧 Updating Python dependencies..."
+            cd /opt/codeautopsy/backend
+            source venv/bin/activate
+            pip install -r requirements.txt
+            
+            echo "🗄️ Running Migrations..."
+            alembic upgrade head
+            
+            echo "⚙️ Restarting Services..."
+            sudo systemctl restart codeautopsy
+            sudo systemctl restart caddy
+            
+            echo "🚀 Deployment Successful!"

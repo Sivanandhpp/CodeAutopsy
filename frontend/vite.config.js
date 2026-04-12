@@ -20,21 +20,16 @@ export default defineConfig({
   build: {
     // ─── PRODUCTION OPTIMIZATIONS ──────────────────────────────────────
     target: 'esnext',
-    minify: 'terser', 
     cssMinify: true,
-    terserOptions: {
-      compress: {
-        drop_console: true, // Removes console logs in production
-        drop_debugger: true,
-      },
-    },
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts', 'd3'],
-          editor: ['@monaco-editor/react'],
-          motion: ['framer-motion'],
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('recharts') || id.includes('d3')) return 'charts';
+            if (id.includes('@monaco-editor')) return 'editor';
+            if (id.includes('framer-motion')) return 'motion';
+            return 'vendor';
+          }
         },
       },
     },
