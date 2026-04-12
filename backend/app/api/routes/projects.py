@@ -216,9 +216,11 @@ async def add_collaborator(
     """Add a user to the project. Only owners can add collaborators."""
     project, _ = await _get_user_project(project_id, user, db, required_roles=["owner"])
 
-    # Find target user by username
+    # Find target user by username (case-insensitive)
+    formatted_username = req.username.capitalize()
+    from sqlalchemy import func
     result = await db.execute(
-        select(User).where(User.username == req.username)
+        select(User).where(func.lower(User.username) == formatted_username.lower())
     )
     target_user = result.scalar_one_or_none()
 

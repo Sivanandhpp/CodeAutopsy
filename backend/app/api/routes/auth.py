@@ -201,9 +201,11 @@ async def register(
             detail="An account with this email already exists.",
         )
 
-    # Check if username already taken
+    # Check if username already taken (case-insensitive)
+    formatted_username = req.username.capitalize()
+    from sqlalchemy import func
     result = await db.execute(
-        select(User).where(User.username == req.username)
+        select(User).where(func.lower(User.username) == formatted_username.lower())
     )
     if result.scalar_one_or_none():
         raise HTTPException(
@@ -214,7 +216,7 @@ async def register(
     # Create user
     user = User(
         email=req.email.lower(),
-        username=req.username,
+        username=formatted_username,
         password_hash=hash_password(req.password),
         is_verified=True,
     )

@@ -97,7 +97,7 @@ export default function LandingPage() {
             transition={{ duration: 0.7, delay: 0.15 }}
           >
             Bugs don't appear.<br />They're introduced.
-            
+
           </motion.h1>
 
           <motion.p
@@ -106,7 +106,7 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.35 }}
           >
-            Find when a bug was introduced, who wrote it, and how it spread before it ships.
+            Catch bugs at their origin before they ship.
           </motion.p>
 
           {/* Glass Input */}
