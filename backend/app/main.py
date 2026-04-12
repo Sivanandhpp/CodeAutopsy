@@ -8,8 +8,10 @@ v2.0: Docker + PostgreSQL + JWT Auth + Ollama
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
 
 from app.config import get_settings
 from app.database import dispose_engine
@@ -33,6 +35,20 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+# ─── Security Headers Middleware ─────────────────────────────
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Adds standard security response headers to every response."""
+
+    async def dispatch(self, request: Request, call_next):
+        response: StarletteResponse = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
 
 
 @asynccontextmanager
@@ -60,20 +76,29 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = get_settings()
 
+    # Disable interactive API docs in production
+    is_prod = settings.ENV == "production"
+
     app = FastAPI(
         title="CodeAutopsy API",
         description="AI-Powered Code Archaeology & Security Analysis Platform",
         version="2.0.0",
         lifespan=lifespan,
+        docs_url=None if is_prod else "/docs",
+        redoc_url=None if is_prod else "/redoc",
+        openapi_url=None if is_prod else "/openapi.json",
     )
 
-    # CORS middleware
+    # Security headers (runs after CORS so headers don't get stripped)
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # CORS middleware — restrict to actual methods/headers used
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
         expose_headers=["Content-Disposition"],
     )
 

@@ -43,7 +43,6 @@ services:
       CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:80"
     ports:
       - "8000:8000"
-    user: "0"
     volumes:
       - ./backend:/app
       - repos_data:/repos_data

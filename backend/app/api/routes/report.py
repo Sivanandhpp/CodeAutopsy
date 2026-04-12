@@ -7,7 +7,7 @@ PDF uses a premium, brand-consistent design with ReportLab.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from collections import Counter
 from xml.sax.saxutils import escape
@@ -254,7 +254,7 @@ async def export_json(
     analyzed_at = (
         analysis.completed_at.isoformat() if analysis.completed_at
         else (analysis.created_at.isoformat() if analysis.created_at
-              else datetime.utcnow().isoformat())
+              else datetime.now(timezone.utc).isoformat())
     )
 
     export_data = {
@@ -325,7 +325,7 @@ async def export_pdf(
     elif analysis.created_at:
         date_str = analysis.created_at.strftime("%B %d, %Y at %H:%M UTC")
     else:
-        date_str = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
+        date_str = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
 
     sev_counts = {
         "blocker": 0,

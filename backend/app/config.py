@@ -6,6 +6,7 @@ Supports PostgreSQL, JWT auth, email, Ollama, and all service configuration.
 """
 
 import os
+import logging
 from functools import lru_cache
 from typing import Optional
 
@@ -15,13 +16,17 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings — all configurable via environment variables."""
 
+    # ─── Environment ─────────────────────────────────────────
+    ENV: str = "development"  # "development" or "production"
+
     # ─── Database ────────────────────────────────────────────
     # Value is injected from .env. We don't hardcode connection strings here.
     DATABASE_URL: str = ""
 
-    # Connection pool tuning for concurrent analysis
-    DB_POOL_SIZE: int = 20
-    DB_MAX_OVERFLOW: int = 40
+    # Connection pool tuning — conservative defaults for budget VMs.
+    # Override in .env for larger deployments.
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800  # Recycle connections every 30 min
 
@@ -88,4 +93,20 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """Cached settings singleton."""
-    return Settings()
+    settings = Settings()
+
+    # ── Production guard: reject weak JWT secrets ──
+    _logger = logging.getLogger(__name__)
+    secret = settings.JWT_SECRET_KEY
+    if settings.ENV == "production":
+        if not secret or len(secret) < 32 or "change-me" in secret:
+            raise RuntimeError(
+                "FATAL: JWT_SECRET_KEY is too weak for production. "
+                "Generate a secure key with: openssl rand -hex 32"
+            )
+    elif not secret:
+        _logger.warning(
+            "⚠ JWT_SECRET_KEY is empty — using an insecure default for development only."
+        )
+
+    return settings

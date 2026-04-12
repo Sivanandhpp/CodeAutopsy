@@ -21,15 +21,11 @@ async def send_otp_email(email: str, otp_code: str) -> bool:
     settings = get_settings()
 
     if settings.EMAIL_DEV_MODE or not settings.is_email_configured:
-        # ─── Dev Mode: Print to console ──────────────────────
-        logger.info(f"📧 [DEV MODE] OTP for {email}: {otp_code}")
-        print(f"\n{'='*50}")
-        print(f"📧  OTP VERIFICATION CODE")
-        print(f"{'='*50}")
-        print(f"  Email: {email}")
-        print(f"  Code:  {otp_code}")
-        print(f"  Expires in: {settings.OTP_EXPIRE_MINUTES} minutes")
-        print(f"{'='*50}\n")
+        # ─── Dev Mode: Log to console ──────────────────────
+        logger.info(
+            "\n%s\n📧  OTP VERIFICATION CODE\n%s\n  Email: %s\n  Code:  %s\n  Expires in: %d minutes\n%s",
+            "=" * 50, "=" * 50, email, otp_code, settings.OTP_EXPIRE_MINUTES, "=" * 50,
+        )
         return True
 
     # ─── Production: Send via SMTP ───────────────────────────
@@ -97,14 +93,10 @@ async def send_password_reset_email(email: str, otp_code: str) -> bool:
     settings = get_settings()
 
     if settings.EMAIL_DEV_MODE or not settings.is_email_configured:
-        logger.info(f"📧 [DEV MODE] Password Reset OTP for {email}: {otp_code}")
-        print(f"\n{'='*50}")
-        print(f"🔑  PASSWORD RESET CODE")
-        print(f"{'='*50}")
-        print(f"  Email: {email}")
-        print(f"  Code:  {otp_code}")
-        print(f"  Expires in: {settings.OTP_EXPIRE_MINUTES} minutes")
-        print(f"{'='*50}\n")
+        logger.info(
+            "\n%s\n🔑  PASSWORD RESET CODE\n%s\n  Email: %s\n  Code:  %s\n  Expires in: %d minutes\n%s",
+            "=" * 50, "=" * 50, email, otp_code, settings.OTP_EXPIRE_MINUTES, "=" * 50,
+        )
         return True
 
     # For production, reuse OTP email with different messaging

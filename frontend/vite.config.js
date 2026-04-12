@@ -30,7 +30,12 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        // manualChunks removed for debugging
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          charts: ['recharts', 'd3'],
+          editor: ['@monaco-editor/react'],
+          motion: ['framer-motion'],
+        },
       },
     },
     chunkSizeWarningLimit: 1000, // Increased limit due to heavy viz libraries

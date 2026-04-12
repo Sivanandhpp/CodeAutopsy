@@ -24,6 +24,7 @@ backend/*.sqlite3
 .env.test.local
 .env.production.local
 backend/.env
+frontend/.env
 
 # OS-specific files
 .DS_Store
