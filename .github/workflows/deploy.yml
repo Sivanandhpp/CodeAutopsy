@@ -26,6 +26,17 @@ jobs:
           npm install
           npm run build
 
+      # Ensure the azureuser has permission to overwrite the files before SCP runs
+      - name: Fix Directory Permissions
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            sudo chown -R ${{ secrets.VM_USERNAME }}:${{ secrets.VM_USERNAME }} /opt/codeautopsy
+            sudo chmod -R u+rw /opt/codeautopsy
+
       # Copy the backend code and the newly built frontend to the Azure VM
       - name: Copy Files to Azure VM
         uses: appleboy/scp-action@v0.1.4
