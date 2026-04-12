@@ -1,18 +1,13 @@
 name: Deploy to Azure Bare-Metal
-
 on:
   push:
     branches:
       - main
   workflow_dispatch:
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -33,7 +28,7 @@ jobs:
 
       # Copy the backend code and the newly built frontend to the Azure VM
       - name: Copy Files to Azure VM
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.VM_IP }}
           username: ${{ secrets.VM_USERNAME }}
@@ -43,7 +38,7 @@ jobs:
 
       # SSH into the VM to update dependencies, run migrations, and restart
       - name: Restart Services on VM
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.VM_IP }}
           username: ${{ secrets.VM_USERNAME }}
@@ -53,12 +48,12 @@ jobs:
             cd /opt/codeautopsy/backend
             source venv/bin/activate
             pip install -r requirements.txt
-            
+
             echo "🗄️ Running Migrations..."
             alembic upgrade head
-            
+
             echo "⚙️ Restarting Services..."
             sudo systemctl restart codeautopsy
             sudo systemctl restart caddy
-            
+
             echo "🚀 Deployment Successful!"
