@@ -41,6 +41,7 @@ from app.models.schemas import (
     AnalyzeRequest, AnalyzeResponse, AnalysisResultResponse,
     IssueDetail,
 )
+from pydantic import BaseModel as PydanticBaseModel
 from app.services.git_service import git_service
 from app.services.static_analyzer import static_analyzer
 from app.services.ai import get_ai_gateway
@@ -808,7 +809,6 @@ async def get_file_content(
         raise HTTPException(status_code=404, detail="Analysis not found")
 
     # Repo may have been cleaned up after analysis — check if path is still accessible
-    import os
     repo_path = record.clone_path or record.repo_path
     if not repo_path or not os.path.exists(repo_path):
         raise HTTPException(
@@ -831,9 +831,8 @@ async def get_file_content(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-from pydantic import BaseModel
 
-class FileUpdateRequest(BaseModel):
+class FileUpdateRequest(PydanticBaseModel):
     file_path: str
     content: str
 
@@ -841,10 +840,10 @@ class FileUpdateRequest(BaseModel):
 async def update_file_content(
     analysis_id: str,
     req: FileUpdateRequest,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update file content in an analyzed repository (sandbox edit). Works for both authenticated and anonymous users."""
+    """Update file content in an analyzed repository (sandbox edit). Requires authentication."""
     result = await db.execute(
         select(AnalysisResult).where(AnalysisResult.id == analysis_id)
     )
@@ -853,7 +852,6 @@ async def update_file_content(
     if not record:
         raise HTTPException(status_code=404, detail="Analysis not found")
 
-    import os
     repo_path = record.clone_path or record.repo_path
     if not repo_path or not os.path.exists(repo_path):
         raise HTTPException(

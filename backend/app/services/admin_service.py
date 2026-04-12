@@ -22,7 +22,7 @@ from app.models.user import User
 from app.models.project import Project, UserProject
 from app.models.analysis import AnalysisResult
 from app.models.audit_log import AuditLog
-from app.config import get_settings
+from app.services.repo_storage_service import RepoStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +76,8 @@ async def get_system_stats(db: AsyncSession) -> dict:
     )).scalar() or 0
 
     # Total storage (scan filesystem)
-    settings = get_settings()
     total_storage = 0
-    repos_dir = settings.REPOS_DIR
+    repos_dir = str(RepoStorageService.get_base_path())
     try:
         if os.path.exists(repos_dir):
             total_storage = await asyncio.to_thread(_get_dir_size, repos_dir)
@@ -348,8 +347,7 @@ async def delete_all_repos(db: AsyncSession, admin: User) -> dict:
     await db.flush()
 
     # Also try to clean up the entire repos directory
-    settings = get_settings()
-    repos_dir = settings.REPOS_DIR
+    repos_dir = str(RepoStorageService.get_base_path())
     try:
         if os.path.exists(repos_dir):
             for item in os.listdir(repos_dir):

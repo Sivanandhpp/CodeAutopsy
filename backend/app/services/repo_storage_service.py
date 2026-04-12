@@ -1,40 +1,62 @@
-"""Repo storage service for resolving clone paths across environments."""
+"""
+Repo Storage Service — Single Source of Truth for Clone Paths
+==============================================================
+Every part of the app that needs to know WHERE repos are stored
+must go through this module. No exceptions.
 
+Resolution priority (first match wins):
+  1. REPOS_DIR env var    → explicit override (cloud, custom setups)
+  2. /repos_data          → Docker volume (auto-detected)
+  3. ./repos              → relative to CWD (bare-metal Linux/macOS/Windows)
+"""
+
+import logging
 import os
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
+# Cache so we only resolve + log once per process
+_resolved_base: Path | None = None
+
 
 class RepoStorageService:
-    """
-    Resolves where to clone a repo based on runtime environment.
-    Priority order:
-      1. REPOS_DATA_PATH env var (explicit override, highest priority)
-      2. Docker volume mount at /repos_data (detected by os.path.ismount)
-      3. Linux home directory ~/repos (WSL2 native fallback)
-      4. /tmp/codeautopsy_repos (last resort)
-    """
+    """Resolves where to clone repos. Works on every platform."""
 
     @staticmethod
     def get_base_path() -> Path:
-        env_path = os.environ.get("REPOS_DATA_PATH")
+        """
+        Return the root directory for all cloned repos.
+        Creates the directory if it doesn't exist.
+        Result is cached for the lifetime of the process.
+        """
+        global _resolved_base
+        if _resolved_base is not None:
+            return _resolved_base
+
+        # 1. Explicit env var — highest priority
+        env_path = os.environ.get("REPOS_DIR", "").strip()
         if env_path:
-            base = Path(env_path).expanduser()
+            base = Path(env_path).resolve()
             base.mkdir(parents=True, exist_ok=True)
+            _resolved_base = base
+            logger.info(f"📂 Repos dir (env REPOS_DIR): {base}")
             return base
 
+        # 2. Docker volume at /repos_data — auto-detected
         docker_mount = Path("/repos_data")
-        if docker_mount.exists() and os.path.ismount(docker_mount):
+        if docker_mount.exists():
             docker_mount.mkdir(parents=True, exist_ok=True)
+            _resolved_base = docker_mount
+            logger.info(f"📂 Repos dir (Docker volume): {docker_mount}")
             return docker_mount
 
-        home_repos = Path.home() / "repos"
-        try:
-            home_repos.mkdir(parents=True, exist_ok=True)
-            return home_repos
-        except OSError:
-            tmp_repos = Path("/tmp/codeautopsy_repos")
-            tmp_repos.mkdir(parents=True, exist_ok=True)
-            return tmp_repos
+        # 3. ./repos relative to working directory — cross-platform fallback
+        local = Path.cwd() / "repos"
+        local.mkdir(parents=True, exist_ok=True)
+        _resolved_base = local
+        logger.info(f"📂 Repos dir (local): {local}")
+        return local
 
     @staticmethod
     def get_clone_path(repo_name: str, analysis_id: str) -> Path:

@@ -20,17 +20,17 @@ export default defineConfig({
   build: {
     // ─── PRODUCTION OPTIMIZATIONS ──────────────────────────────────────
     target: 'esnext',
-    minify: 'terser', 
     cssMinify: true,
-    terserOptions: {
-      compress: {
-        drop_console: true, // Removes console logs in production
-        drop_debugger: true,
-      },
-    },
     rollupOptions: {
       output: {
-        // manualChunks removed for debugging
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('recharts') || id.includes('d3')) return 'charts';
+            if (id.includes('@monaco-editor')) return 'editor';
+            if (id.includes('framer-motion')) return 'motion';
+            return 'vendor';
+          }
+        },
       },
     },
     chunkSizeWarningLimit: 1000, // Increased limit due to heavy viz libraries

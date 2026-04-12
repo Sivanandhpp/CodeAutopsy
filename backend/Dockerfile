@@ -44,8 +44,8 @@ COPY --from=builder /install /usr/local
 # Copy application code
 COPY . .
 
-# Create data directories with correct ownership
-RUN mkdir -p /app/data/repos && chown -R appuser:appuser /app
+# Set correct ownership for the app directory
+RUN chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser

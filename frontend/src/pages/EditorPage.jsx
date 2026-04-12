@@ -3,7 +3,7 @@
  * No global navbar; editor has its own integrated bar.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Loader2, AlertTriangle, ArrowLeft, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,6 +21,9 @@ export default function EditorPage() {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useThemeStore();
   const { analysisResult } = useAnalysisStore();
+
+  // Editor ref for imperative jumpToLine
+  const editorRef = useRef(null);
 
   // Analysis data
   const [analysis, setAnalysis] = useState(analysisResult || null);
@@ -102,26 +105,14 @@ export default function EditorPage() {
     i => i.file_path === selectedFile
   );
 
-  // Jump to line handler
+  // Jump to line handler — uses the editor ref
   const handleJumpToLine = useCallback((lineNumber) => {
-    const editorEl = document.querySelector('.ce-wrap .monaco-editor');
-    if (editorEl) {
-      const editor = editorEl.__monacoEditor;
-      if (editor) {
-        editor.revealLineInCenter(lineNumber);
-        editor.setPosition({ lineNumber, column: 1 });
-        editor.focus();
-        return;
-      }
-    }
-    const wrapper = document.querySelector('.ce-wrap');
-    if (wrapper) {
-      const lineHeight = 18;
-      wrapper.scrollTop = (lineNumber - 5) * lineHeight;
+    if (editorRef.current) {
+      editorRef.current.jumpToLine(lineNumber);
     }
   }, []);
 
-  // Trace origin handler
+  // Trace origin from Problems panel — opens archaeology popup with issue details
   const handleTraceOrigin = useCallback((issue) => {
     setArchaeologyTarget({
       filePath: issue.file_path,
@@ -129,6 +120,19 @@ export default function EditorPage() {
       defectFamily: issue.defect_family,
     });
   }, []);
+
+  // Trace origin from editor right-click context menu
+  const handleEditorTraceOrigin = useCallback(({ lineNumber, selectedText }) => {
+    // Try to find a matching issue on this line
+    const matchingIssue = currentFileIssues.find(i => i.line_number === lineNumber);
+
+    setArchaeologyTarget({
+      filePath: selectedFile,
+      lineNumber: lineNumber,
+      defectFamily: matchingIssue?.defect_family || null,
+      selectedText: selectedText || null,
+    });
+  }, [currentFileIssues, selectedFile]);
 
   const handleCodeEdit = useCallback((newValue) => {
     setFileCode(newValue);
@@ -247,11 +251,12 @@ export default function EditorPage() {
               </div>
             ) : selectedFile ? (
               <CodeEditor
+                ref={editorRef}
                 code={fileCode}
                 language={fileLanguage}
                 issues={currentFileIssues}
-                onLineClick={handleJumpToLine}
                 onChange={handleCodeEdit}
+                onTraceOrigin={handleEditorTraceOrigin}
                 isDark={isDark}
               />
             ) : (

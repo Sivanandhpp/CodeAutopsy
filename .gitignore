@@ -10,8 +10,8 @@ backend/venv/
 backend/env/
 backend/.venv/
 backend/env.bak/
-backend/__pycache__/
-backend/*.py[cod]
+__pycache__/
+*.py[cod]
 backend/*$py.class
 backend/.pytest_cache/
 backend/alembic.ini
@@ -24,6 +24,7 @@ backend/*.sqlite3
 .env.test.local
 .env.production.local
 backend/.env
+frontend/.env
 
 # OS-specific files
 .DS_Store
@@ -42,7 +43,8 @@ Thumbs.db
 
 # Project specific
 backend/juice-shop/
-backend/data/
-backend/temp_repos/
-backend/data/repos
+backend/repos/
 frontend/landing page/
+
+codeautopsy_upload.zip
+codeautopsy-vm_key.pem

@@ -139,8 +139,17 @@ async def verify_otp_code(
             detail="Invalid or expired OTP. Please request a new code.",
         )
 
+    # Brute-force protection: lock OTP after too many failed attempts
+    if otp_record.is_locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Please request a new code.",
+        )
+
     # Verify the OTP
     if not verify_otp(req.otp_code, otp_record.otp_hash):
+        otp_record.verify_attempts = (otp_record.verify_attempts or 0) + 1
+        await db.flush()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect verification code. Please try again.",
@@ -321,7 +330,22 @@ async def reset_password(
     )
     otp_record = result.scalar_one_or_none()
 
-    if otp_record is None or not verify_otp(req.otp_code, otp_record.otp_hash):
+    if otp_record is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset code.",
+        )
+
+    # Brute-force protection
+    if otp_record.is_locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Please request a new reset code.",
+        )
+
+    if not verify_otp(req.otp_code, otp_record.otp_hash):
+        otp_record.verify_attempts = (otp_record.verify_attempts or 0) + 1
+        await db.flush()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset code.",
