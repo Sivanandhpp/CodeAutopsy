@@ -21,7 +21,7 @@ jobs:
       - name: Build Frontend
         working-directory: ./frontend
         env:
-          VITE_API_URL: ""
+          VITE_API_URL: "http://codeautopsy.centralindia.cloudapp.azure.com"
         run: |
           npm install
           npm run build
